@@ -1,11 +1,20 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { PaperAnalysis, ChatMessage } from "@/types";
 
-// Initialize Gemini API
-// Note: In a real production app, we might want to proxy this through a backend
-// to keep the key secret, but for this demo/preview, we use the client-side key.
-const apiKey = process.env.GEMINI_API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
+// Initialize Gemini API lazily to prevent app crash on startup if key is missing
+let ai: GoogleGenAI | null = null;
+
+function getAI() {
+  if (!ai) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      console.warn("Gemini API Key is missing. AI features will not work.");
+      return null;
+    }
+    ai = new GoogleGenAI({ apiKey });
+  }
+  return ai;
+}
 
 const ANALYSIS_SCHEMA = {
   type: Type.OBJECT,
@@ -35,7 +44,8 @@ const ANALYSIS_SCHEMA = {
 };
 
 export async function analyzePaper(text: string): Promise<PaperAnalysis> {
-  if (!apiKey) throw new Error("Gemini API Key is missing");
+  const ai = getAI();
+  if (!ai) throw new Error("Gemini API Key is missing");
 
   const model = "gemini-3-flash-preview"; // Using the recommended model for text tasks
 
@@ -83,7 +93,8 @@ export async function chatWithPaper(
   newMessage: string,
   onStream: (chunk: string) => void
 ): Promise<string> {
-  if (!apiKey) throw new Error("Gemini API Key is missing");
+  const ai = getAI();
+  if (!ai) throw new Error("Gemini API Key is missing");
 
   const model = "gemini-3-flash-preview";
 
