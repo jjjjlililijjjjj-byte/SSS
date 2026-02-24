@@ -1,8 +1,8 @@
 import * as pdfjsLib from 'pdfjs-dist';
 
 // Set worker source to CDN to avoid build issues with worker files
-// Using version 4.10.38 as a fallback if pdfjsLib.version is not available
-const version = pdfjsLib.version || '4.10.38';
+// Using version 5.4.624 as a fallback if pdfjsLib.version is not available
+const version = pdfjsLib.version || '5.4.624';
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${version}/build/pdf.worker.min.mjs`;
 
 export async function extractTextFromPDF(file: File): Promise<string> {

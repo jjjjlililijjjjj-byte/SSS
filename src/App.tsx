@@ -9,7 +9,7 @@ import { Paper, ProcessingStatus, PaperAnalysis } from '@/types';
 import { extractTextFromPDF } from '@/lib/pdf-parser';
 import { analyzePaper } from '@/lib/gemini';
 import { BookOpen, Github, Trash2, Download, Table as TableIcon, Network, Search, Minimize2, Maximize2 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 
 function App() {
   const [papers, setPapers] = useState<Paper[]>([]);
@@ -118,23 +118,38 @@ function App() {
     }
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (papers.length === 0) return;
 
-    const exportData = papers.map(p => ({
-      Title: p.analysis?.title || p.fileName,
-      Summary: p.analysis?.summary || '',
-      Goal: p.analysis?.goal || '',
-      Content: p.analysis?.content || '',
-      Method: p.analysis?.method || '',
-      Outlook: p.analysis?.outlook || '',
-      Value: p.analysis?.reference_value || '',
-    }));
+    const ExcelJS = (await import('exceljs')).default;
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Papers');
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Papers");
-    XLSX.writeFile(wb, "scholartab_export.xlsx");
+    worksheet.columns = [
+      { header: 'Title', key: 'title', width: 30 },
+      { header: 'Summary', key: 'summary', width: 50 },
+      { header: 'Goal', key: 'goal', width: 30 },
+      { header: 'Content', key: 'content', width: 50 },
+      { header: 'Method', key: 'method', width: 30 },
+      { header: 'Outlook', key: 'outlook', width: 30 },
+      { header: 'Value', key: 'reference_value', width: 30 },
+    ];
+
+    papers.forEach(p => {
+      worksheet.addRow({
+        title: p.analysis?.title || p.fileName,
+        summary: p.analysis?.summary || '',
+        goal: p.analysis?.goal || '',
+        content: p.analysis?.content || '',
+        method: p.analysis?.method || '',
+        outlook: p.analysis?.outlook || '',
+        reference_value: p.analysis?.reference_value || '',
+      });
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    saveAs(blob, 'scholartab_export.xlsx');
   };
 
   const handlePaperUpdate = (paperId: string, field: keyof PaperAnalysis, value: string) => {

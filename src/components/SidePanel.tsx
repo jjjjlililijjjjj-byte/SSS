@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, FileText, AlignLeft, Search, Download, ExternalLink, ChevronRight, ChevronLeft } from 'lucide-react';
+import { X, FileText, AlignLeft, Search, Download, ExternalLink, ChevronRight, ChevronLeft, Maximize2, Minimize2 } from 'lucide-react';
 import { Paper } from '@/types';
 import ReactMarkdown from 'react-markdown';
 
@@ -17,6 +17,7 @@ export function SidePanel({ paper, title, highlightContent, fileUrl, onClose, is
   const [isReadableMode, setIsReadableMode] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [pdfPage, setPdfPage] = useState(1);
+  const [isFullScreen, setIsFullScreen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   // Reset state when paper changes
@@ -97,7 +98,7 @@ export function SidePanel({ paper, title, highlightContent, fileUrl, onClose, is
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-y-0 right-0 w-full md:w-[50%] bg-white shadow-2xl border-l border-gray-200 flex flex-col z-40 transform transition-transform duration-300 ease-in-out">
+    <div className={`fixed inset-y-0 right-0 bg-white shadow-2xl border-l border-gray-200 flex flex-col z-40 transform transition-all duration-300 ease-in-out ${isFullScreen ? 'w-full' : 'w-full md:w-[50%]'}`}>
       {/* Header */}
       <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200 bg-white flex-shrink-0">
         <div className="flex items-center gap-3 overflow-hidden">
@@ -114,17 +115,26 @@ export function SidePanel({ paper, title, highlightContent, fileUrl, onClose, is
         
         <div className="flex items-center gap-2">
           {fileUrl && (
-            <button
-              onClick={() => setShowPdf(!showPdf)}
-              className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium border ${
-                showPdf 
-                  ? 'bg-blue-50 text-blue-700 border-blue-200' 
-                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-              }`}
-            >
-              <FileText className="w-4 h-4" />
-              {showPdf ? '查看文本' : '查看 PDF'}
-            </button>
+            <>
+              <button
+                onClick={() => setShowPdf(!showPdf)}
+                className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium border ${
+                  showPdf 
+                    ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                {showPdf ? '查看文本' : '查看 PDF'}
+              </button>
+              <button
+                onClick={() => setIsFullScreen(!isFullScreen)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500"
+                title={isFullScreen ? "退出全屏" : "全屏显示"}
+              >
+                {isFullScreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+              </button>
+            </>
           )}
         </div>
       </div>
