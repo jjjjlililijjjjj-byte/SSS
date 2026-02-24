@@ -136,60 +136,81 @@ const EditableCell = ({
   };
 
   const renderLinkedText = (text: string) => {
-    if (!text || !allPapers) return text;
-
-    // Filter out the current paper to avoid self-linking
-    const otherPapers = allPapers.filter(p => p.id !== row.id && (p.analysis?.title || p.fileName));
-    if (otherPapers.length === 0) return text;
-
-    // Sort by title length desc to match longest first
-    const sortedPapers = [...otherPapers].sort((a, b) => {
-      const titleA = a.analysis?.title || a.fileName;
-      const titleB = b.analysis?.title || b.fileName;
-      return titleB.length - titleA.length;
-    });
+    if (!text) return text;
 
     let parts: (string | React.ReactNode)[] = [text];
 
-    sortedPapers.forEach(paper => {
-      const title = paper.analysis?.title || paper.fileName;
-      if (title.length < 5) return; // Skip very short titles to avoid noise
+    // 1. Link to other papers
+    if (allPapers) {
+      // Filter out the current paper to avoid self-linking
+      const otherPapers = allPapers.filter(p => p.id !== row.id && (p.analysis?.title || p.fileName));
+      
+      if (otherPapers.length > 0) {
+        // Sort by title length desc to match longest first
+        const sortedPapers = [...otherPapers].sort((a, b) => {
+          const titleA = a.analysis?.title || a.fileName;
+          const titleB = b.analysis?.title || b.fileName;
+          return titleB.length - titleA.length;
+        });
 
-      const newParts: (string | React.ReactNode)[] = [];
-      parts.forEach(part => {
-        if (typeof part === 'string') {
-          // Escape regex special chars in title
-          const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const regex = new RegExp(`(${escapedTitle})`, 'gi');
-          const split = part.split(regex);
+        sortedPapers.forEach(paper => {
+          const title = paper.analysis?.title || paper.fileName;
+          if (title.length < 5) return; // Skip very short titles to avoid noise
 
-          split.forEach((s, i) => {
-            if (s.toLowerCase() === title.toLowerCase()) {
-               newParts.push(
-                 <span
-                   key={`${paper.id}-${i}`}
-                   className="text-blue-600 hover:underline cursor-pointer font-medium"
-                   onClick={(e) => {
-                     e.stopPropagation();
-                     onLinkClick(paper);
-                   }}
-                   title={`Go to ${title}`}
-                 >
-                   {s}
-                 </span>
-               );
-            } else if (s !== "") {
-              newParts.push(s);
+          const newParts: (string | React.ReactNode)[] = [];
+          parts.forEach(part => {
+            if (typeof part === 'string') {
+              // Escape regex special chars in title
+              const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const regex = new RegExp(`(${escapedTitle})`, 'gi');
+              const split = part.split(regex);
+
+              split.forEach((s, i) => {
+                if (s.toLowerCase() === title.toLowerCase()) {
+                   newParts.push(
+                     <span
+                       key={`${paper.id}-${i}`}
+                       className="text-blue-600 hover:underline cursor-pointer font-medium"
+                       onClick={(e) => {
+                         e.stopPropagation();
+                         onLinkClick(paper);
+                       }}
+                       title={`Go to ${title}`}
+                     >
+                       {s}
+                     </span>
+                   );
+                } else if (s !== "") {
+                  newParts.push(s);
+                }
+              });
+            } else {
+              newParts.push(part);
             }
           });
-        } else {
-          newParts.push(part);
-        }
-      });
-      parts = newParts;
+          parts = newParts;
+        });
+      }
+    }
+
+    // 2. Parse Markdown bolding (**text**)
+    const finalParts: (string | React.ReactNode)[] = [];
+    parts.forEach((part, partIndex) => {
+      if (typeof part === 'string') {
+        const split = part.split(/(\*\*.*?\*\*)/g);
+        split.forEach((s, i) => {
+          if (s.startsWith('**') && s.endsWith('**') && s.length >= 4) {
+             finalParts.push(<strong key={`bold-${partIndex}-${i}`}>{s.slice(2, -2)}</strong>);
+          } else if (s !== "") {
+             finalParts.push(s);
+          }
+        });
+      } else {
+        finalParts.push(part);
+      }
     });
 
-    return parts;
+    return finalParts;
   };
 
   if (!isEditable) {

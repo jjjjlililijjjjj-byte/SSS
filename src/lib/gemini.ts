@@ -43,6 +43,7 @@ export async function analyzePaper(text: string): Promise<PaperAnalysis> {
     You are an academic paper analysis expert. Please read the provided paper text and output a strict JSON format data.
     The content of the analysis (summary, goal, content, method, outlook, reference_value) MUST be in Chinese.
     The citation MUST be in GB/T 7714-2015 format.
+    Important keywords and terms in the analysis content MUST be highlighted using markdown bold syntax (e.g., **keyword**).
     Do not output any explanatory text.
     
     Paper Text:
