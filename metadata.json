@@ -1,0 +1,5 @@
+{
+  "name": "ScholarTab",
+  "description": "A minimalist academic literature management tool. Drag and drop PDFs to automatically extract key points and generate structured tables using AI, with support for deep dialogue analysis.",
+  "requestFramePermissions": []
+}

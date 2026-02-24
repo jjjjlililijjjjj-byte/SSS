@@ -1,0 +1,501 @@
+import React, { useState, useEffect } from 'react';
+import {
+  useReactTable,
+  getCoreRowModel,
+  flexRender,
+  ColumnDef,
+} from '@tanstack/react-table';
+import { Paper, ProcessingStatus, PaperAnalysis } from '@/types';
+import { Loader2, CheckCircle2, AlertCircle, MessageSquare, Pencil, Eye, Plus, X, Quote } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface DataTableProps {
+  data: Paper[];
+  onRowClick: (paper: Paper) => void;
+  onPaperUpdate: (paperId: string, field: keyof PaperAnalysis, value: string) => void;
+  onViewSource: (paper: Paper, field?: string, content?: string) => void;
+  isCompact?: boolean;
+  onTagAdd: (paperId: string, tag: string) => void;
+  onTagRemove: (paperId: string, tag: string) => void;
+  onViewCitation: (citation: string) => void;
+}
+
+const StatusIcon = ({ status }: { status: ProcessingStatus }) => {
+  switch (status) {
+    case 'parsing':
+    case 'analyzing':
+      return <Loader2 className="w-4 h-4 animate-spin text-blue-500" />;
+    case 'completed':
+      return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+    case 'error':
+      return <AlertCircle className="w-4 h-4 text-red-500" />;
+    default:
+      return <div className="w-4 h-4 rounded-full border-2 border-gray-200" />;
+  }
+};
+
+const TagsCell = ({ 
+  tags, 
+  onAddTag, 
+  onRemoveTag 
+}: { 
+  tags: string[], 
+  onAddTag: (tag: string) => void, 
+  onRemoveTag: (tag: string) => void 
+}) => {
+  const [isAdding, setIsAdding] = useState(false);
+  const [newTag, setNewTag] = useState("");
+
+  const handleAdd = () => {
+    if (newTag.trim()) {
+      onAddTag(newTag.trim());
+      setNewTag("");
+      setIsAdding(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap gap-1 items-center min-w-[100px]">
+      {tags.map(tag => (
+        <span key={tag} className="bg-blue-50 text-blue-700 border border-blue-100 text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
+          {tag}
+          <button 
+            onClick={(e) => { e.stopPropagation(); onRemoveTag(tag); }} 
+            className="hover:text-blue-900 rounded-full hover:bg-blue-100 p-0.5"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </span>
+      ))}
+      {isAdding ? (
+        <div className="flex items-center gap-1">
+            <input
+                type="text"
+                value={newTag}
+                onChange={e => setNewTag(e.target.value)}
+                onKeyDown={e => { 
+                  if(e.key === 'Enter') handleAdd(); 
+                  if(e.key === 'Escape') setIsAdding(false);
+                }}
+                className="w-24 text-xs border border-blue-300 rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-blue-500"
+                autoFocus
+                onClick={e => e.stopPropagation()}
+                onBlur={() => {
+                  if (newTag.trim()) handleAdd();
+                  else setIsAdding(false);
+                }}
+                placeholder="New tag..."
+            />
+        </div>
+      ) : (
+        <button 
+          onClick={(e) => { e.stopPropagation(); setIsAdding(true); }} 
+          className="text-gray-400 hover:text-blue-600 p-1 hover:bg-gray-100 rounded-full transition-colors"
+          title="Add Tag"
+        >
+          <Plus className="w-3 h-3" />
+        </button>
+      )}
+    </div>
+  )
+};
+
+const EditableCell = ({
+  value: initialValue,
+  row,
+  columnId,
+  updateData,
+  isEditable,
+  onViewSource,
+  allPapers,
+  onLinkClick,
+  isCompact,
+}: {
+  value: string;
+  row: Paper;
+  columnId: string;
+  updateData: (paperId: string, field: keyof PaperAnalysis, value: string) => void;
+  isEditable: boolean;
+  onViewSource: () => void;
+  allPapers: Paper[];
+  onLinkClick: (paper: Paper) => void;
+  isCompact?: boolean;
+}) => {
+  const [value, setValue] = useState(initialValue);
+  const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    setValue(initialValue);
+  }, [initialValue]);
+
+  const onBlur = () => {
+    setIsEditing(false);
+    if (value !== initialValue) {
+      updateData(row.id, columnId as keyof PaperAnalysis, value);
+    }
+  };
+
+  const renderLinkedText = (text: string) => {
+    if (!text || !allPapers) return text;
+
+    // Filter out the current paper to avoid self-linking
+    const otherPapers = allPapers.filter(p => p.id !== row.id && (p.analysis?.title || p.fileName));
+    if (otherPapers.length === 0) return text;
+
+    // Sort by title length desc to match longest first
+    const sortedPapers = [...otherPapers].sort((a, b) => {
+      const titleA = a.analysis?.title || a.fileName;
+      const titleB = b.analysis?.title || b.fileName;
+      return titleB.length - titleA.length;
+    });
+
+    let parts: (string | React.ReactNode)[] = [text];
+
+    sortedPapers.forEach(paper => {
+      const title = paper.analysis?.title || paper.fileName;
+      if (title.length < 5) return; // Skip very short titles to avoid noise
+
+      const newParts: (string | React.ReactNode)[] = [];
+      parts.forEach(part => {
+        if (typeof part === 'string') {
+          // Escape regex special chars in title
+          const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const regex = new RegExp(`(${escapedTitle})`, 'gi');
+          const split = part.split(regex);
+
+          split.forEach((s, i) => {
+            if (s.toLowerCase() === title.toLowerCase()) {
+               newParts.push(
+                 <span
+                   key={`${paper.id}-${i}`}
+                   className="text-blue-600 hover:underline cursor-pointer font-medium"
+                   onClick={(e) => {
+                     e.stopPropagation();
+                     onLinkClick(paper);
+                   }}
+                   title={`Go to ${title}`}
+                 >
+                   {s}
+                 </span>
+               );
+            } else if (s !== "") {
+              newParts.push(s);
+            }
+          });
+        } else {
+          newParts.push(part);
+        }
+      });
+      parts = newParts;
+    });
+
+    return parts;
+  };
+
+  if (!isEditable) {
+    return (
+      <div 
+        className={cn(
+          "text-sm text-gray-600",
+          isCompact ? "line-clamp-3" : "whitespace-pre-wrap"
+        )} 
+        title={isCompact ? value : undefined}
+      >
+        {renderLinkedText(value || '-')}
+      </div>
+    );
+  }
+
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+    }
+  }, [isEditing, value]);
+
+  if (isEditing) {
+    return (
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={onBlur}
+        onClick={(e) => e.stopPropagation()}
+        autoFocus
+        className="w-full bg-white border border-blue-300 p-2 text-sm text-gray-900 focus:ring-2 focus:ring-blue-100 outline-none resize-none rounded-md shadow-sm overflow-hidden"
+        style={{ minHeight: '4rem' }}
+      />
+    );
+  }
+
+  return (
+    <div 
+      className="group relative min-h-[3rem] p-1 rounded hover:bg-gray-50 transition-colors cursor-pointer"
+      onClick={(e) => {
+        e.stopPropagation();
+        onViewSource();
+      }}
+    >
+      <div className={cn(
+        "text-sm text-gray-600 pr-6",
+        isCompact ? "line-clamp-3" : "whitespace-pre-wrap"
+      )}>
+        {renderLinkedText(value || '-')}
+      </div>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsEditing(true);
+        }}
+        className="absolute top-1 right-1 p-1.5 bg-white text-gray-400 hover:text-blue-600 rounded shadow-sm border border-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
+        title="Edit"
+      >
+        <Pencil className="w-3 h-3" />
+      </button>
+    </div>
+  );
+};
+
+export function DataTable({ data, onRowClick, onPaperUpdate, onViewSource, isCompact = false, onTagAdd, onTagRemove, onViewCitation }: DataTableProps) {
+  const columns: ColumnDef<Paper>[] = [
+    {
+      accessorKey: 'status',
+      header: '',
+      size: 40,
+      cell: ({ row }) => (
+        <div className="flex items-center justify-center">
+          <StatusIcon status={row.original.status} />
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'title',
+      header: '标题',
+      size: 200,
+      cell: ({ row }) => (
+        <div className="flex flex-col gap-1">
+          <div 
+            className={cn(
+              "font-medium text-gray-900 cursor-pointer hover:text-blue-600 transition-colors",
+              isCompact ? "truncate" : "whitespace-pre-wrap"
+            )}
+            title={isCompact ? (row.original.analysis?.title || row.original.fileName) : "点击查看全文"}
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewSource(row.original);
+            }}
+          >
+            {row.original.analysis?.title || row.original.fileName}
+          </div>
+          <TagsCell 
+            tags={row.original.tags || []} 
+            onAddTag={(tag) => onTagAdd(row.original.id, tag)}
+            onRemoveTag={(tag) => onTagRemove(row.original.id, tag)}
+          />
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'summary',
+      header: '摘要',
+      size: 250,
+      cell: ({ row }) => (
+        <EditableCell
+          value={row.original.analysis?.summary || ''}
+          row={row.original}
+          columnId="summary"
+          updateData={onPaperUpdate}
+          isEditable={row.original.status === 'completed'}
+          onViewSource={() => onViewSource(row.original, 'Summary', row.original.analysis?.summary)}
+          allPapers={data}
+          onLinkClick={onRowClick}
+          isCompact={isCompact}
+        />
+      ),
+    },
+    {
+      accessorKey: 'goal',
+      header: '研究目标',
+      size: 200,
+      cell: ({ row }) => (
+        <EditableCell
+          value={row.original.analysis?.goal || ''}
+          row={row.original}
+          columnId="goal"
+          updateData={onPaperUpdate}
+          isEditable={row.original.status === 'completed'}
+          onViewSource={() => onViewSource(row.original, 'Goal', row.original.analysis?.goal)}
+          allPapers={data}
+          onLinkClick={onRowClick}
+          isCompact={isCompact}
+        />
+      ),
+    },
+    {
+      accessorKey: 'content',
+      header: '研究内容',
+      size: 250,
+      cell: ({ row }) => (
+        <EditableCell
+          value={row.original.analysis?.content || ''}
+          row={row.original}
+          columnId="content"
+          updateData={onPaperUpdate}
+          isEditable={row.original.status === 'completed'}
+          onViewSource={() => onViewSource(row.original, 'Content', row.original.analysis?.content)}
+          allPapers={data}
+          onLinkClick={onRowClick}
+          isCompact={isCompact}
+        />
+      ),
+    },
+    {
+      accessorKey: 'method',
+      header: '研究方法',
+      size: 200,
+      cell: ({ row }) => (
+        <EditableCell
+          value={row.original.analysis?.method || ''}
+          row={row.original}
+          columnId="method"
+          updateData={onPaperUpdate}
+          isEditable={row.original.status === 'completed'}
+          onViewSource={() => onViewSource(row.original, 'Method', row.original.analysis?.method)}
+          allPapers={data}
+          onLinkClick={onRowClick}
+          isCompact={isCompact}
+        />
+      ),
+    },
+    {
+      accessorKey: 'outlook',
+      header: '展望',
+      size: 200,
+      cell: ({ row }) => (
+        <EditableCell
+          value={row.original.analysis?.outlook || ''}
+          row={row.original}
+          columnId="outlook"
+          updateData={onPaperUpdate}
+          isEditable={row.original.status === 'completed'}
+          onViewSource={() => onViewSource(row.original, 'Outlook', row.original.analysis?.outlook)}
+          allPapers={data}
+          onLinkClick={onRowClick}
+          isCompact={isCompact}
+        />
+      ),
+    },
+    {
+      accessorKey: 'reference_value',
+      header: '参考价值',
+      size: 200,
+      cell: ({ row }) => (
+        <EditableCell
+          value={row.original.analysis?.reference_value || ''}
+          row={row.original}
+          columnId="reference_value"
+          updateData={onPaperUpdate}
+          isEditable={row.original.status === 'completed'}
+          onViewSource={() => onViewSource(row.original, 'Value', row.original.analysis?.reference_value)}
+          allPapers={data}
+          onLinkClick={onRowClick}
+          isCompact={isCompact}
+        />
+      ),
+    },
+    {
+      id: 'actions',
+      size: 80,
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onRowClick(row.original);
+            }}
+            className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400 hover:text-blue-600"
+            title="Chat with Paper"
+          >
+            <MessageSquare className="w-4 h-4" />
+          </button>
+          {row.original.analysis?.citation && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewCitation(row.original.analysis!.citation!);
+              }}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400 hover:text-blue-600"
+              title="View Citation"
+            >
+              <Quote className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  const table = useReactTable({
+    data,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
+  return (
+    <div className="border rounded-xl overflow-hidden bg-white shadow-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse table-fixed min-w-[1200px]">
+          <thead className="bg-gray-50 border-b border-gray-100">
+            {table.getHeaderGroups().map((headerGroup) => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <th
+                    key={header.id}
+                    className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap sticky top-0 bg-gray-50 z-10"
+                    style={{ width: header.getSize() }}
+                  >
+                    {flexRender(
+                      header.column.columnDef.header,
+                      header.getContext()
+                    )}
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {table.getRowModel().rows.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length} className="px-4 py-8 text-center text-gray-500">
+                  暂无论文，请上传。
+                </td>
+              </tr>
+            ) : (
+              table.getRowModel().rows.map((row) => (
+                <tr
+                  key={row.id}
+                  className="hover:bg-gray-50/50 transition-colors group"
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <td
+                      key={cell.id}
+                      className="px-4 py-3 align-top"
+                      style={{ width: cell.column.getSize() }}
+                    >
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext()
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
