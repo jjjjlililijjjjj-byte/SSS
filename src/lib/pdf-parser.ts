@@ -5,13 +5,11 @@ export async function extractTextFromPDF(file: File): Promise<string> {
     
     // Set worker source to CDN - using version 4.10.38 which is stable
     const version = '4.10.38';
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.min.js`;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.min.mjs`;
 
     const arrayBuffer = await file.arrayBuffer();
     const loadingTask = pdfjsLib.getDocument({ 
       data: arrayBuffer,
-      useWorkerFetch: true,
-      isEvalSupported: false,
     });
     
     const pdf = await loadingTask.promise;
