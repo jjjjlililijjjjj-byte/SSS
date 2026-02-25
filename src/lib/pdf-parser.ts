@@ -3,9 +3,13 @@ export async function extractTextFromPDF(file: File): Promise<string> {
     // Dynamically import pdfjs-dist
     const pdfjsLib = await import('pdfjs-dist');
     
-    // Set worker source to CDN - using version 4.10.38 which is stable
-    const version = '4.10.38';
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.min.mjs`;
+    // Use the actual version from the library to ensure API and Worker versions match
+    const version = pdfjsLib.version;
+    // For version 4.x and above, use .mjs. For older versions, use .js
+    const isESM = version.startsWith('4') || version.startsWith('5');
+    const extension = isESM ? 'mjs' : 'js';
+    
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.min.${extension}`;
 
     const arrayBuffer = await file.arrayBuffer();
     const loadingTask = pdfjsLib.getDocument({ 
