@@ -54,6 +54,31 @@ const ANALYSIS_SCHEMA = {
   required: ["title", "summary", "goal", "content", "method", "outlook", "reference_value", "references", "citation"],
 };
 
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, initialDelay = 1000): Promise<T> {
+  let lastError: any;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      const isTransient = 
+        error?.message?.includes("503") || 
+        error?.message?.includes("UNAVAILABLE") ||
+        error?.message?.includes("429") ||
+        error?.message?.includes("Resource has been exhausted");
+      
+      if (!isTransient || i === maxRetries - 1) {
+        throw error;
+      }
+      
+      const delay = initialDelay * Math.pow(2, i);
+      console.warn(`Gemini API busy (attempt ${i + 1}/${maxRetries}). Retrying in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  throw lastError;
+}
+
 export async function analyzePaper(text: string): Promise<PaperAnalysis> {
   const ai = getAI();
   if (!ai) throw new Error("Gemini API Key is missing");
@@ -71,7 +96,7 @@ export async function analyzePaper(text: string): Promise<PaperAnalysis> {
     ${text.slice(0, 100000)} // Truncate to avoid token limits if necessary
   `;
 
-  try {
+  return withRetry(async () => {
     const response = await ai.models.generateContent({
       model,
       contents: [
@@ -92,10 +117,7 @@ export async function analyzePaper(text: string): Promise<PaperAnalysis> {
     // Cleanup markdown code blocks if present (just in case)
     const cleanedText = responseText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
     return JSON.parse(cleanedText) as PaperAnalysis;
-  } catch (error) {
-    console.error("Error analyzing paper:", error);
-    throw error;
-  }
+  });
 }
 
 export async function chatWithPaper(
@@ -118,7 +140,7 @@ export async function chatWithPaper(
     Answer the user's questions based on this paper. Be concise and accurate.
   `;
 
-  try {
+  return withRetry(async () => {
     const chat = ai.chats.create({
       model,
       config: {
@@ -144,8 +166,5 @@ export async function chatWithPaper(
     }
 
     return fullResponse;
-  } catch (error) {
-    console.error("Error in chat:", error);
-    throw error;
-  }
+  });
 }
