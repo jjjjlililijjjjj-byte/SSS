@@ -54,25 +54,35 @@ const ANALYSIS_SCHEMA = {
   required: ["title", "summary", "goal", "content", "method", "outlook", "reference_value", "references", "citation"],
 };
 
-async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, initialDelay = 1000): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5, initialDelay = 2000): Promise<T> {
   let lastError: any;
   for (let i = 0; i < maxRetries; i++) {
     try {
       return await fn();
     } catch (error: any) {
       lastError = error;
+      const errorMessage = error?.message || String(error);
+      const isQuotaExceeded = errorMessage.includes("429") || errorMessage.includes("RESOURCE_EXHAUSTED");
       const isTransient = 
-        error?.message?.includes("503") || 
-        error?.message?.includes("UNAVAILABLE") ||
-        error?.message?.includes("429") ||
-        error?.message?.includes("Resource has been exhausted");
+        errorMessage.includes("503") || 
+        errorMessage.includes("UNAVAILABLE") ||
+        isQuotaExceeded;
       
       if (!isTransient || i === maxRetries - 1) {
         throw error;
       }
       
-      const delay = initialDelay * Math.pow(2, i);
-      console.warn(`Gemini API busy (attempt ${i + 1}/${maxRetries}). Retrying in ${delay}ms...`);
+      let delay = initialDelay * Math.pow(2, i);
+      
+      // Try to extract retryDelay from error message if it's a quota issue
+      // Example: "Please retry in 16.918814493s" or "retryDelay: 16s"
+      const retryMatch = errorMessage.match(/retry in\s+([\d.]+)\s*s/i) || errorMessage.match(/retryDelay:\s*"?(\d+)s"?/i);
+      if (retryMatch && retryMatch[1]) {
+        const extractedDelay = parseFloat(retryMatch[1]) * 1000;
+        delay = Math.max(delay, extractedDelay + 1000); // Add 1s buffer
+      }
+      
+      console.warn(`Gemini API issue (attempt ${i + 1}/${maxRetries}). Retrying in ${Math.round(delay)}ms...`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
@@ -83,41 +93,58 @@ export async function analyzePaper(text: string): Promise<PaperAnalysis> {
   const ai = getAI();
   if (!ai) throw new Error("Gemini API Key is missing");
 
-  const model = "gemini-3-flash-preview"; // Using the recommended model for text tasks
+  // Models to try in order of preference
+  const models = ["gemini-3-flash-preview", "gemini-flash-lite-latest"];
+  let lastError: any;
 
-  const prompt = `
-    You are an academic paper analysis expert. Please read the provided paper text and output a strict JSON format data.
-    The content of the analysis (summary, goal, content, method, outlook, reference_value) MUST be in Chinese.
-    The citation MUST be in GB/T 7714-2015 format.
-    Important keywords and terms in the analysis content MUST be highlighted using markdown bold syntax (e.g., **keyword**).
-    Do not output any explanatory text.
-    
-    Paper Text:
-    ${text.slice(0, 100000)} // Truncate to avoid token limits if necessary
-  `;
+  for (const model of models) {
+    try {
+      const prompt = `
+        You are an academic paper analysis expert. Please read the provided paper text and output a strict JSON format data.
+        The content of the analysis (summary, goal, content, method, outlook, reference_value) MUST be in Chinese.
+        The citation MUST be in GB/T 7714-2015 format.
+        Important keywords and terms in the analysis content MUST be highlighted using markdown bold syntax (e.g., **keyword**).
+        Do not output any explanatory text.
+        
+        Paper Text:
+        ${text.slice(0, 100000)} // Truncate to avoid token limits if necessary
+      `;
 
-  return withRetry(async () => {
-    const response = await ai.models.generateContent({
-      model,
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: prompt }],
-        },
-      ],
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: ANALYSIS_SCHEMA,
-      },
-    });
+      return await withRetry(async () => {
+        const response = await ai.models.generateContent({
+          model,
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: prompt }],
+            },
+          ],
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: ANALYSIS_SCHEMA,
+          },
+        });
 
-    const responseText = response.text;
-    if (!responseText) throw new Error("No response from AI");
+        const responseText = response.text;
+        if (!responseText) throw new Error("No response from AI");
 
-    // Cleanup markdown code blocks if present (just in case)
-    const cleanedText = responseText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-    return JSON.parse(cleanedText) as PaperAnalysis;
-  });
+        // Cleanup markdown code blocks if present (just in case)
+        const cleanedText = responseText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        return JSON.parse(cleanedText) as PaperAnalysis;
+      });
+    } catch (error: any) {
+      lastError = error;
+      const errorMessage = error?.message || String(error);
+      const isQuotaExceeded = errorMessage.includes("429") || errorMessage.includes("RESOURCE_EXHAUSTED");
+      
+      if (isQuotaExceeded && model !== models[models.length - 1]) {
+        console.warn(`Model ${model} exhausted. Trying fallback model...`);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
 }
 
 export async function chatWithPaper(
@@ -129,42 +156,58 @@ export async function chatWithPaper(
   const ai = getAI();
   if (!ai) throw new Error("Gemini API Key is missing");
 
-  const model = "gemini-3-flash-preview";
+  const models = ["gemini-3-flash-preview", "gemini-flash-lite-latest"];
+  let lastError: any;
 
-  const systemInstruction = `
-    You are an academic assistant. You are discussing a specific paper.
-    Here is the content of the paper you are discussing:
-    
-    ${paperText.slice(0, 100000)}
-    
-    Answer the user's questions based on this paper. Be concise and accurate.
-  `;
+  for (const model of models) {
+    try {
+      const systemInstruction = `
+        You are an academic assistant. You are discussing a specific paper.
+        Here is the content of the paper you are discussing:
+        
+        ${paperText.slice(0, 100000)}
+        
+        Answer the user's questions based on this paper. Be concise and accurate.
+      `;
 
-  return withRetry(async () => {
-    const chat = ai.chats.create({
-      model,
-      config: {
-        systemInstruction,
-      },
-      history: history.map(msg => ({
-        role: msg.role,
-        parts: [{ text: msg.content }],
-      })),
-    });
+      return await withRetry(async () => {
+        const chat = ai.chats.create({
+          model,
+          config: {
+            systemInstruction,
+          },
+          history: history.map(msg => ({
+            role: msg.role,
+            parts: [{ text: msg.content }],
+          })),
+        });
 
-    const result = await chat.sendMessageStream({
-      message: newMessage,
-    });
+        const result = await chat.sendMessageStream({
+          message: newMessage,
+        });
 
-    let fullResponse = "";
-    for await (const chunk of result) {
-      const chunkText = chunk.text;
-      if (chunkText) {
-        fullResponse += chunkText;
-        onStream(fullResponse);
+        let fullResponse = "";
+        for await (const chunk of result) {
+          const chunkText = chunk.text;
+          if (chunkText) {
+            fullResponse += chunkText;
+            onStream(fullResponse);
+          }
+        }
+
+        return fullResponse;
+      });
+    } catch (error: any) {
+      lastError = error;
+      const errorMessage = error?.message || String(error);
+      const isQuotaExceeded = errorMessage.includes("429") || errorMessage.includes("RESOURCE_EXHAUSTED");
+      
+      if (isQuotaExceeded && model !== models[models.length - 1]) {
+        console.warn(`Model ${model} exhausted for chat. Trying fallback model...`);
+        continue;
       }
+      throw error;
     }
-
-    return fullResponse;
-  });
+  }
+  throw lastError;
 }

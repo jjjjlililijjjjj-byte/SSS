@@ -169,8 +169,32 @@ function App() {
       }
     };
 
-    // Execute all processing tasks
-    await Promise.all(files.map((file, i) => processFile(file, newPapers[i].id)));
+    // Execute processing tasks with limited concurrency (2 at a time)
+    const concurrencyLimit = 2;
+    const tasks = files.map((file, i) => () => processFile(file, newPapers[i].id));
+    
+    const executeTasks = async () => {
+      const results: Promise<void>[] = [];
+      const executing = new Set<Promise<void>>();
+      
+      for (const task of tasks) {
+        const p = Promise.resolve().then(() => task());
+        results.push(p);
+        executing.add(p);
+        const clean = () => executing.delete(p);
+        p.then(clean).catch(clean);
+        
+        if (executing.size >= concurrencyLimit) {
+          await Promise.race(executing);
+        }
+        
+        // Add a small delay between starting tasks to avoid burst rate limits
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      return Promise.all(results);
+    };
+
+    await executeTasks();
     
     // Reset batch progress after a delay
     setTimeout(() => {

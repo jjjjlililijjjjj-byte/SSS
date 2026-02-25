@@ -506,6 +506,24 @@ export function DataTable({
       ),
     },
     {
+      accessorKey: 'citation',
+      header: '参考文献',
+      size: 250,
+      cell: ({ row }) => (
+        <EditableCell
+          value={row.original.analysis?.citation || ''}
+          row={row.original}
+          columnId="citation"
+          updateData={onPaperUpdate}
+          isEditable={row.original.status === 'completed'}
+          onViewSource={() => onViewSource(row.original, 'Citation', row.original.analysis?.citation)}
+          allPapers={data}
+          onLinkClick={onPaperLinkClick || onRowClick}
+          isCompact={isCompact}
+        />
+      ),
+    },
+    {
       id: 'actions',
       size: 80,
       cell: ({ row }) => (
@@ -653,7 +671,7 @@ export function DataTable({
         ref={scrollContainerRef}
         className="overflow-x-auto"
       >
-        <table className="w-full text-left border-collapse table-fixed min-w-[1200px]">
+        <table className="w-full text-left border-collapse table-fixed min-w-[1800px]">
           <thead className="bg-gray-50 border-b border-gray-100">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
