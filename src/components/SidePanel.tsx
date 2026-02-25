@@ -35,7 +35,7 @@ export function SidePanel({ paper, title, highlightContent, fileUrl, onClose, is
           const res = await fetch(fileUrl, { method: 'HEAD' });
           if (res.ok) {
             setIsBlobValid(true);
-            setShowPdf(!highlightContent);
+            setShowPdf(true); // Always default to PDF if available
           } else {
             setIsBlobValid(false);
             setShowPdf(false);
@@ -142,11 +142,15 @@ export function SidePanel({ paper, title, highlightContent, fileUrl, onClose, is
             <>
               <button
                 onClick={() => setShowPdf(!showPdf)}
+                disabled={!isBlobValid}
                 className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium border ${
-                  showPdf 
-                    ? 'bg-blue-50 text-blue-700 border-blue-200' 
-                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  !isBlobValid 
+                    ? 'opacity-50 cursor-not-allowed bg-gray-100 text-gray-400 border-gray-200' 
+                    : showPdf 
+                      ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
                 }`}
+                title={!isBlobValid ? "PDF 文件已失效，请重新上传" : ""}
               >
                 <FileText className="w-4 h-4" />
                 {showPdf ? '查看文本' : '查看 PDF'}
