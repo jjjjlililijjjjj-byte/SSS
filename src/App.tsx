@@ -170,8 +170,8 @@ function App() {
       }
     };
 
-    // Execute processing tasks with limited concurrency (2 at a time)
-    const concurrencyLimit = 2;
+    // Execute processing tasks with limited concurrency (4 at a time)
+    const concurrencyLimit = 4;
     const tasks = files.map((file, i) => () => processFile(file, newPapers[i].id));
     
     const executeTasks = async () => {

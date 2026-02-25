@@ -18,12 +18,36 @@ export function SidePanel({ paper, title, highlightContent, fileUrl, onClose, is
   const [searchTerm, setSearchTerm] = useState('');
   const [pdfPage, setPdfPage] = useState(1);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [isBlobValid, setIsBlobValid] = useState(true);
   const contentRef = useRef<HTMLDivElement>(null);
 
   // Reset state when paper changes
   useEffect(() => {
     if (isOpen) {
-      setShowPdf(!!fileUrl);
+      // Check if blob URL is still valid (might be lost after page reload)
+      const checkBlobUrl = async () => {
+        if (!fileUrl) {
+          setIsBlobValid(false);
+          setShowPdf(false);
+          return;
+        }
+        try {
+          const res = await fetch(fileUrl, { method: 'HEAD' });
+          if (res.ok) {
+            setIsBlobValid(true);
+            setShowPdf(!highlightContent);
+          } else {
+            setIsBlobValid(false);
+            setShowPdf(false);
+          }
+        } catch (e) {
+          setIsBlobValid(false);
+          setShowPdf(false);
+        }
+      };
+      
+      checkBlobUrl();
+      
       setSearchTerm('');
       // Try to find page number if highlightContent is provided
       if (highlightContent && paper.text) {
@@ -142,10 +166,10 @@ export function SidePanel({ paper, title, highlightContent, fileUrl, onClose, is
       {/* Content */}
       <div className={`flex-1 relative ${showPdf ? 'overflow-hidden' : 'overflow-auto bg-gray-50'}`}>
         {showPdf && fileUrl ? (
-          <object
-            data={`${fileUrl}#page=${pdfPage}`}
-            type="application/pdf"
-            className="w-full h-full block"
+          <iframe
+            src={`${fileUrl}#page=${pdfPage}`}
+            className="w-full h-full border-0"
+            title="PDF Viewer"
           >
             <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-2">
               <p>无法直接显示 PDF。</p>
@@ -157,7 +181,7 @@ export function SidePanel({ paper, title, highlightContent, fileUrl, onClose, is
                 下载 PDF
               </a>
             </div>
-          </object>
+          </iframe>
         ) : (
           <div className="p-8 max-w-3xl mx-auto bg-white min-h-full shadow-sm">
              {renderHighlightedText()}

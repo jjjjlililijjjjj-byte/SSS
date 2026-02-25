@@ -22,16 +22,21 @@ export async function extractTextFromPDF(file: File): Promise<string> {
     
     const pdf = await loadingTask.promise;
     
-    let fullText = '';
-    
+    const pagePromises = [];
     for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items
-        .map((item: any) => item.str)
-        .join(' '); // Use space instead of newline for better flow
-      fullText += `--- PAGE ${i} ---\n${pageText}\n\n`;
+      pagePromises.push(
+        pdf.getPage(i).then(async (page) => {
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items
+            .map((item: any) => item.str)
+            .join(' ');
+          return `--- PAGE ${i} ---\n${pageText}\n\n`;
+        })
+      );
     }
+    
+    const pagesText = await Promise.all(pagePromises);
+    const fullText = pagesText.join('');
     
     return fullText.trim();
   } catch (error) {

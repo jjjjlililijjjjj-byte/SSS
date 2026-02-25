@@ -93,9 +93,15 @@ export async function analyzePaper(text: string): Promise<PaperAnalysis> {
   const ai = getAI();
   if (!ai) throw new Error("Gemini API Key is missing");
 
-  // Models to try in order of preference
-  const models = ["gemini-3-flash-preview", "gemini-flash-lite-latest"];
+  // Models to try in order of preference (fastest first)
+  const models = ["gemini-flash-lite-latest", "gemini-3-flash-preview"];
   let lastError: any;
+
+  // Intelligently truncate text to speed up processing while keeping intro and conclusion/references
+  let truncatedText = text;
+  if (text.length > 50000) {
+    truncatedText = text.slice(0, 40000) + "\n\n...[CONTENT TRUNCATED FOR SPEED]...\n\n" + text.slice(-10000);
+  }
 
   for (const model of models) {
     try {
@@ -107,7 +113,7 @@ export async function analyzePaper(text: string): Promise<PaperAnalysis> {
         Do not output any explanatory text.
         
         Paper Text:
-        ${text.slice(0, 100000)} // Truncate to avoid token limits if necessary
+        ${truncatedText}
       `;
 
       return await withRetry(async () => {
@@ -156,8 +162,14 @@ export async function chatWithPaper(
   const ai = getAI();
   if (!ai) throw new Error("Gemini API Key is missing");
 
-  const models = ["gemini-3-flash-preview", "gemini-flash-lite-latest"];
+  const models = ["gemini-flash-lite-latest", "gemini-3-flash-preview"];
   let lastError: any;
+
+  // Truncate text to speed up chat processing
+  let truncatedText = paperText;
+  if (paperText.length > 50000) {
+    truncatedText = paperText.slice(0, 40000) + "\n\n...[CONTENT TRUNCATED FOR SPEED]...\n\n" + paperText.slice(-10000);
+  }
 
   for (const model of models) {
     try {
@@ -165,7 +177,7 @@ export async function chatWithPaper(
         You are an academic assistant. You are discussing a specific paper.
         Here is the content of the paper you are discussing:
         
-        ${paperText.slice(0, 100000)}
+        ${truncatedText}
         
         Answer the user's questions based on this paper. Be concise and accurate.
       `;
