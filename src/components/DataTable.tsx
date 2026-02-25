@@ -23,6 +23,8 @@ interface DataTableProps {
   highlightedId?: string | null;
   onLinkClick?: (paper: Paper) => void;
   onDeletePapers: (paperIds: string[]) => void;
+  onBatchTagAdd: (paperIds: string[], tag: string) => void;
+  onBatchTagClear: (paperIds: string[]) => void;
 }
 
 const StatusIcon = ({ status, error }: { status: ProcessingStatus, error?: string }) => {
@@ -299,9 +301,13 @@ export function DataTable({
   onViewCitation,
   highlightedId,
   onLinkClick: onPaperLinkClick,
-  onDeletePapers
+  onDeletePapers,
+  onBatchTagAdd,
+  onBatchTagClear
 }: DataTableProps) {
   const [rowSelection, setRowSelection] = useState({});
+  const [batchTag, setBatchTag] = useState("");
+  const [isBatchTagging, setIsBatchTagging] = useState(false);
 
   const columns: ColumnDef<Paper>[] = [
     {
@@ -535,9 +541,74 @@ export function DataTable({
     <div className="space-y-4">
       {selectedRows.length > 0 && (
         <div className="flex items-center justify-between bg-blue-50 border border-blue-100 px-4 py-2 rounded-lg animate-in fade-in slide-in-from-top-2">
-          <span className="text-sm text-blue-700 font-medium">
-            已选择 {selectedRows.length} 篇文献
-          </span>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-blue-700 font-medium">
+              已选择 {selectedRows.length} 篇文献
+            </span>
+            
+            {isBatchTagging ? (
+              <div className="flex items-center gap-2 animate-in fade-in zoom-in-95 duration-200">
+                <input
+                  type="text"
+                  value={batchTag}
+                  onChange={(e) => setBatchTag(e.target.value)}
+                  placeholder="输入标签..."
+                  className="text-xs border border-blue-300 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-blue-500 w-32"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      if (batchTag.trim()) {
+                        onBatchTagAdd(selectedRows.map(r => r.original.id), batchTag.trim());
+                        setBatchTag("");
+                        setIsBatchTagging(false);
+                      }
+                    }
+                    if (e.key === 'Escape') setIsBatchTagging(false);
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    if (batchTag.trim()) {
+                      onBatchTagAdd(selectedRows.map(r => r.original.id), batchTag.trim());
+                      setBatchTag("");
+                      setIsBatchTagging(false);
+                    }
+                  }}
+                  className="p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setIsBatchTagging(false)}
+                  className="p-1.5 bg-gray-200 text-gray-600 rounded-lg hover:bg-gray-300"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsBatchTagging(true)}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-white border border-blue-200 text-blue-600 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors shadow-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  批量添加标签
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm(`确定要清空选中的 ${selectedRows.length} 篇文献的所有标签吗？`)) {
+                      onBatchTagClear(selectedRows.map(r => r.original.id));
+                    }
+                  }}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+                >
+                  <X className="w-4 h-4" />
+                  清空标签
+                </button>
+              </div>
+            )}
+          </div>
+
           <button
             onClick={() => {
               if (confirm(`确定要删除选中的 ${selectedRows.length} 篇文献吗？`)) {

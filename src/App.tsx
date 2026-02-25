@@ -154,25 +154,30 @@ function App() {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Papers');
 
+    // Helper to strip markdown bold syntax
+    const stripMarkdown = (text: string) => {
+      return text.replace(/\*\*(.*?)\*\*/g, '$1');
+    };
+
     worksheet.columns = [
-      { header: 'Title', key: 'title', width: 30 },
-      { header: 'Summary', key: 'summary', width: 50 },
-      { header: 'Goal', key: 'goal', width: 30 },
-      { header: 'Content', key: 'content', width: 50 },
-      { header: 'Method', key: 'method', width: 30 },
-      { header: 'Outlook', key: 'outlook', width: 30 },
-      { header: 'Value', key: 'reference_value', width: 30 },
+      { header: '标题', key: 'title', width: 30 },
+      { header: '摘要', key: 'summary', width: 50 },
+      { header: '研究目标', key: 'goal', width: 30 },
+      { header: '研究内容', key: 'content', width: 50 },
+      { header: '研究方法', key: 'method', width: 30 },
+      { header: '未来展望', key: 'outlook', width: 30 },
+      { header: '参考价值', key: 'reference_value', width: 30 },
     ];
 
     papers.forEach(p => {
       worksheet.addRow({
-        title: p.analysis?.title || p.fileName,
-        summary: p.analysis?.summary || '',
-        goal: p.analysis?.goal || '',
-        content: p.analysis?.content || '',
-        method: p.analysis?.method || '',
-        outlook: p.analysis?.outlook || '',
-        reference_value: p.analysis?.reference_value || '',
+        title: stripMarkdown(p.analysis?.title || p.fileName),
+        summary: stripMarkdown(p.analysis?.summary || ''),
+        goal: stripMarkdown(p.analysis?.goal || ''),
+        content: stripMarkdown(p.analysis?.content || ''),
+        method: stripMarkdown(p.analysis?.method || ''),
+        outlook: stripMarkdown(p.analysis?.outlook || ''),
+        reference_value: stripMarkdown(p.analysis?.reference_value || ''),
       });
     });
 
@@ -253,6 +258,27 @@ function App() {
     if (selectedPaper && paperIds.includes(selectedPaper.id)) {
       setSelectedPaper(null);
     }
+  };
+
+  const handleBatchTagAdd = (paperIds: string[], tag: string) => {
+    setPapers(prev => prev.map(p => {
+      if (paperIds.includes(p.id)) {
+        const currentTags = p.tags || [];
+        if (!currentTags.includes(tag)) {
+          return { ...p, tags: [...currentTags, tag] };
+        }
+      }
+      return p;
+    }));
+  };
+
+  const handleBatchTagClear = (paperIds: string[]) => {
+    setPapers(prev => prev.map(p => {
+      if (paperIds.includes(p.id)) {
+        return { ...p, tags: [] };
+      }
+      return p;
+    }));
   };
 
   return (
@@ -471,6 +497,8 @@ function App() {
                   highlightedId={highlightedPaperId}
                   onLinkClick={handleLinkClick}
                   onDeletePapers={handleDeletePapers}
+                  onBatchTagAdd={handleBatchTagAdd}
+                  onBatchTagClear={handleBatchTagClear}
                 />
               ) : (
                 <KnowledgeGraph 
