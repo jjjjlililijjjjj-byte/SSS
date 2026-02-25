@@ -5,11 +5,12 @@ import { ChatWindow } from '@/components/ChatWindow';
 import { KnowledgeGraph } from '@/components/KnowledgeGraph';
 import { SidePanel } from '@/components/SidePanel';
 import { CitationModal } from '@/components/CitationModal';
-import { Paper, ProcessingStatus, PaperAnalysis } from '@/types';
+import { Paper, ProcessingStatus, PaperAnalysis, BatchProgress } from '@/types';
 import { extractTextFromPDF } from '@/lib/pdf-parser';
 import { analyzePaper } from '@/lib/gemini';
-import { BookOpen, Github, Trash2, Download, Table as TableIcon, Network, Search, Minimize2, Maximize2 } from 'lucide-react';
+import { BookOpen, Github, Trash2, Download, Table as TableIcon, Network, Search, Minimize2, Maximize2, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { saveAs } from 'file-saver';
+import { motion, AnimatePresence } from 'motion/react';
 
 function App() {
   const [papers, setPapers] = useState<Paper[]>([]);
@@ -21,6 +22,12 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isCompactMode, setIsCompactMode] = useState(false);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [batchProgress, setBatchProgress] = useState<BatchProgress>({
+    total: 0,
+    completed: 0,
+    failed: 0,
+    isProcessing: false,
+  });
 
   // Load from local storage on mount
   useEffect(() => {
@@ -81,12 +88,16 @@ function App() {
     }));
 
     setPapers(prev => [...prev, ...newPapers]);
+    
+    setBatchProgress({
+      total: files.length,
+      completed: 0,
+      failed: 0,
+      isProcessing: true,
+    });
 
-    // Process each file
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const paperId = newPapers[i].id;
-
+    // Process files in parallel
+    const processFile = async (file: File, paperId: string) => {
       try {
         // 1. Parse PDF
         const text = await extractTextFromPDF(file);
@@ -101,14 +112,24 @@ function App() {
         setPapers(prev => prev.map(p => 
           p.id === paperId ? { ...p, status: 'completed', analysis } : p
         ));
-
+        
+        setBatchProgress(prev => ({ ...prev, completed: prev.completed + 1 }));
       } catch (error) {
         console.error(`Error processing file ${file.name}:`, error);
         setPapers(prev => prev.map(p => 
           p.id === paperId ? { ...p, status: 'error', error: String(error) } : p
         ));
+        setBatchProgress(prev => ({ ...prev, failed: prev.failed + 1 }));
       }
-    }
+    };
+
+    // Execute all processing tasks
+    await Promise.all(files.map((file, i) => processFile(file, newPapers[i].id)));
+    
+    // Reset batch progress after a delay
+    setTimeout(() => {
+      setBatchProgress(prev => ({ ...prev, isProcessing: false }));
+    }, 3000);
   }, []);
 
   const handleClearAll = () => {
@@ -284,6 +305,45 @@ function App() {
       <div className="flex-1 flex overflow-hidden relative">
         <main className={`flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 transition-all duration-300 ${sourceModal ? 'mr-[50%] hidden md:block' : ''}`}>
           <div className="max-w-7xl mx-auto">
+            {/* Batch Progress Indicator */}
+            <AnimatePresence>
+              {batchProgress.isProcessing && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className="mb-6 bg-white border border-gray-200 rounded-xl p-4 shadow-sm"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                      <span className="text-sm font-medium text-gray-700">
+                        正在批量处理文献 ({batchProgress.completed + batchProgress.failed} / {batchProgress.total})
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs">
+                      <span className="flex items-center gap-1 text-green-600">
+                        <CheckCircle2 className="w-3 h-3" /> {batchProgress.completed} 成功
+                      </span>
+                      {batchProgress.failed > 0 && (
+                        <span className="flex items-center gap-1 text-red-600">
+                          <AlertCircle className="w-3 h-3" /> {batchProgress.failed} 失败
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                    <motion.div
+                      className="bg-blue-600 h-full"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${((batchProgress.completed + batchProgress.failed) / batchProgress.total) * 100}%` }}
+                      transition={{ duration: 0.5 }}
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Dropzone */}
             <section>
               <Dropzone onFilesDrop={handleFilesDrop} className="bg-white" />

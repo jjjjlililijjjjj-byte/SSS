@@ -32,3 +32,10 @@ export interface ChatMessage {
   role: 'user' | 'model';
   content: string;
 }
+
+export interface BatchProgress {
+  total: number;
+  completed: number;
+  failed: number;
+  isProcessing: boolean;
+}
