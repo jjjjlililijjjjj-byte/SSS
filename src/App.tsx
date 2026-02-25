@@ -176,7 +176,7 @@ function App() {
     setTimeout(() => {
       setBatchProgress(prev => ({ ...prev, isProcessing: false }));
     }, 3000);
-  }, []);
+  }, [hasApiKey]);
 
   const handleClearAll = () => {
     if (confirm('Are you sure you want to clear all papers?')) {
