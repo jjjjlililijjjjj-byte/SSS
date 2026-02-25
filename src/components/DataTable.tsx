@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -36,9 +36,16 @@ const StatusIcon = ({ status, error }: { status: ProcessingStatus, error?: strin
       return <CheckCircle2 className="w-4 h-4 text-green-500" />;
     case 'error':
       return (
-        <span title={error || '解析失败'}>
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            alert(`解析失败原因:\n${error || '未知错误'}`);
+          }}
+          title={error || '解析失败 (点击查看详情)'}
+          className="cursor-help hover:scale-110 transition-transform"
+        >
           <AlertCircle className="w-4 h-4 text-red-500" />
-        </span>
+        </button>
       );
     default:
       return <div className="w-4 h-4 rounded-full border-2 border-gray-200" />;
@@ -308,6 +315,24 @@ export function DataTable({
   const [rowSelection, setRowSelection] = useState({});
   const [batchTag, setBatchTag] = useState("");
   const [isBatchTagging, setIsBatchTagging] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleWheelNative = (e: WheelEvent) => {
+      // If there's a vertical scroll delta and it's dominant, apply it to horizontal scroll
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        container.scrollLeft += e.deltaY;
+        // Prevent page vertical scroll
+        e.preventDefault();
+      }
+    };
+
+    container.addEventListener('wheel', handleWheelNative, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheelNative);
+  }, []);
 
   const columns: ColumnDef<Paper>[] = [
     {
@@ -624,7 +649,10 @@ export function DataTable({
         </div>
       )}
       <div className="border rounded-xl overflow-hidden bg-white shadow-sm">
-      <div className="overflow-x-auto">
+      <div 
+        ref={scrollContainerRef}
+        className="overflow-x-auto"
+      >
         <table className="w-full text-left border-collapse table-fixed min-w-[1200px]">
           <thead className="bg-gray-50 border-b border-gray-100">
             {table.getHeaderGroups().map((headerGroup) => (

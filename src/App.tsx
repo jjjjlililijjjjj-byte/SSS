@@ -122,11 +122,17 @@ function App() {
         
         setBatchProgress(prev => ({ ...prev, completed: prev.completed + 1 }));
       } catch (error) {
+        const errorMsg = String(error);
         console.error(`Error processing file ${file.name}:`, error);
         setPapers(prev => prev.map(p => 
-          p.id === paperId ? { ...p, status: 'error', error: String(error) } : p
+          p.id === paperId ? { ...p, status: 'error', error: errorMsg } : p
         ));
         setBatchProgress(prev => ({ ...prev, failed: prev.failed + 1 }));
+        
+        // If it's a single file or small batch, alert the user
+        if (files.length <= 3) {
+          alert(`文件 "${file.name}" 解析失败:\n${errorMsg}`);
+        }
       }
     };
 
