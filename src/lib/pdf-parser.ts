@@ -9,11 +9,15 @@ export async function extractTextFromPDF(file: File): Promise<string> {
     const isESM = version.startsWith('4') || version.startsWith('5');
     const extension = isESM ? 'mjs' : 'js';
     
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.min.${extension}`;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.min.${extension}`;
 
     const arrayBuffer = await file.arrayBuffer();
     const loadingTask = pdfjsLib.getDocument({ 
       data: arrayBuffer,
+      // Add font data URL for better character support
+      standardFontDataUrl: `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/standard_fonts/`,
+      cMapUrl: `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/cmaps/`,
+      cMapPacked: true,
     });
     
     const pdf = await loadingTask.promise;

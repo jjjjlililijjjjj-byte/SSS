@@ -22,6 +22,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isCompactMode, setIsCompactMode] = useState(false);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [apiKeyMissing, setApiKeyMissing] = useState(false);
   const [batchProgress, setBatchProgress] = useState<BatchProgress>({
     total: 0,
     completed: 0,
@@ -50,6 +51,12 @@ function App() {
     const papersToSave = papers.map(({ fileUrl, ...rest }) => rest);
     localStorage.setItem('scholartab-papers', JSON.stringify(papersToSave));
   }, [papers]);
+
+  useEffect(() => {
+    if (!process.env.GEMINI_API_KEY) {
+      setApiKeyMissing(true);
+    }
+  }, []);
 
   const allTags = useMemo(() => {
     const tags = new Set<string>();
@@ -241,6 +248,13 @@ function App() {
     setTimeout(() => setHighlightedPaperId(null), 3000);
   };
 
+  const handleDeletePapers = (paperIds: string[]) => {
+    setPapers(prev => prev.filter(p => !paperIds.includes(p.id)));
+    if (selectedPaper && paperIds.includes(selectedPaper.id)) {
+      setSelectedPaper(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col">
       {/* Navbar */}
@@ -305,6 +319,19 @@ function App() {
       <div className="flex-1 flex overflow-hidden relative">
         <main className={`flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 transition-all duration-300 ${sourceModal ? 'mr-[50%] hidden md:block' : ''}`}>
           <div className="max-w-7xl mx-auto">
+            {/* API Key Warning */}
+            {apiKeyMissing && (
+              <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
+                <div>
+                  <h3 className="text-sm font-semibold text-amber-900">Gemini API Key 缺失</h3>
+                  <p className="text-xs text-amber-700 mt-1">
+                    请在环境变量中设置 <code>GEMINI_API_KEY</code> 以启用 AI 分析功能。
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Batch Progress Indicator */}
             <AnimatePresence>
               {batchProgress.isProcessing && (
@@ -443,6 +470,7 @@ function App() {
                   onViewCitation={handleViewCitation}
                   highlightedId={highlightedPaperId}
                   onLinkClick={handleLinkClick}
+                  onDeletePapers={handleDeletePapers}
                 />
               ) : (
                 <KnowledgeGraph 

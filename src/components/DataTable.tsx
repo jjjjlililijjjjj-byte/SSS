@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
   flexRender,
   ColumnDef,
 } from '@tanstack/react-table';
 import { Paper, ProcessingStatus, PaperAnalysis } from '@/types';
-import { Loader2, CheckCircle2, AlertCircle, MessageSquare, Pencil, Eye, Plus, X, Quote } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertCircle, MessageSquare, Pencil, Eye, Plus, X, Quote, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface DataTableProps {
@@ -20,9 +22,10 @@ interface DataTableProps {
   onViewCitation: (citation: string) => void;
   highlightedId?: string | null;
   onLinkClick?: (paper: Paper) => void;
+  onDeletePapers: (paperIds: string[]) => void;
 }
 
-const StatusIcon = ({ status }: { status: ProcessingStatus }) => {
+const StatusIcon = ({ status, error }: { status: ProcessingStatus, error?: string }) => {
   switch (status) {
     case 'parsing':
     case 'analyzing':
@@ -30,7 +33,11 @@ const StatusIcon = ({ status }: { status: ProcessingStatus }) => {
     case 'completed':
       return <CheckCircle2 className="w-4 h-4 text-green-500" />;
     case 'error':
-      return <AlertCircle className="w-4 h-4 text-red-500" />;
+      return (
+        <span title={error || '解析失败'}>
+          <AlertCircle className="w-4 h-4 text-red-500" />
+        </span>
+      );
     default:
       return <div className="w-4 h-4 rounded-full border-2 border-gray-200" />;
   }
@@ -291,16 +298,44 @@ export function DataTable({
   onTagRemove, 
   onViewCitation,
   highlightedId,
-  onLinkClick: onPaperLinkClick
+  onLinkClick: onPaperLinkClick,
+  onDeletePapers
 }: DataTableProps) {
+  const [rowSelection, setRowSelection] = useState({});
+
   const columns: ColumnDef<Paper>[] = [
+    {
+      id: 'select',
+      header: ({ table }) => (
+        <div className="flex items-center justify-center">
+          <input
+            type="checkbox"
+            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+            checked={table.getIsAllPageRowsSelected()}
+            onChange={table.getToggleAllPageRowsSelectedHandler()}
+          />
+        </div>
+      ),
+      cell: ({ row }) => (
+        <div className="flex items-center justify-center">
+          <input
+            type="checkbox"
+            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+            checked={row.getIsSelected()}
+            onChange={row.getToggleSelectedHandler()}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      ),
+      size: 40,
+    },
     {
       accessorKey: 'status',
       header: '',
       size: 40,
       cell: ({ row }) => (
         <div className="flex items-center justify-center">
-          <StatusIcon status={row.original.status} />
+          <StatusIcon status={row.original.status} error={row.original.error} />
         </div>
       ),
     },
@@ -466,6 +501,18 @@ export function DataTable({
               <Quote className="w-4 h-4" />
             </button>
           )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (confirm('确定要删除这篇文献吗？')) {
+                onDeletePapers([row.original.id]);
+              }
+            }}
+            className="p-2 hover:bg-red-50 rounded-full transition-colors text-gray-400 hover:text-red-600"
+            title="Delete Paper"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
         </div>
       ),
     },
@@ -474,11 +521,38 @@ export function DataTable({
   const table = useReactTable({
     data,
     columns,
+    state: {
+      rowSelection,
+    },
+    onRowSelectionChange: setRowSelection,
     getCoreRowModel: getCoreRowModel(),
+    enableRowSelection: true,
   });
 
+  const selectedRows = table.getSelectedRowModel().rows;
+
   return (
-    <div className="border rounded-xl overflow-hidden bg-white shadow-sm">
+    <div className="space-y-4">
+      {selectedRows.length > 0 && (
+        <div className="flex items-center justify-between bg-blue-50 border border-blue-100 px-4 py-2 rounded-lg animate-in fade-in slide-in-from-top-2">
+          <span className="text-sm text-blue-700 font-medium">
+            已选择 {selectedRows.length} 篇文献
+          </span>
+          <button
+            onClick={() => {
+              if (confirm(`确定要删除选中的 ${selectedRows.length} 篇文献吗？`)) {
+                onDeletePapers(selectedRows.map(r => r.original.id));
+                setRowSelection({});
+              }
+            }}
+            className="flex items-center gap-2 px-3 py-1.5 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors shadow-sm"
+          >
+            <Trash2 className="w-4 h-4" />
+            批量删除
+          </button>
+        </div>
+      )}
+      <div className="border rounded-xl overflow-hidden bg-white shadow-sm">
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse table-fixed min-w-[1200px]">
           <thead className="bg-gray-50 border-b border-gray-100">
@@ -535,5 +609,6 @@ export function DataTable({
         </table>
       </div>
     </div>
+  </div>
   );
 }
