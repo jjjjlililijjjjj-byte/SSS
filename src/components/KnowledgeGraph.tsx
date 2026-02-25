@@ -13,12 +13,14 @@ interface Node extends d3.SimulationNodeDatum {
   id: string;
   paper: Paper;
   radius: number;
-  color: string;
+  degree: number;
+  isCore: boolean;
 }
 
 interface Link extends d3.SimulationLinkDatum<Node> {
   source: string | Node;
   target: string | Node;
+  weight: number;
 }
 
 export function KnowledgeGraph({ papers, onNodeClick }: KnowledgeGraphProps) {
@@ -52,27 +54,22 @@ export function KnowledgeGraph({ papers, onNodeClick }: KnowledgeGraphProps) {
     const height = dimensions.height;
 
     // 1. Prepare Data
-    // Filter only completed papers
     const completedPapers = papers.filter(p => p.status === 'completed' && p.analysis);
     
-    // Create nodes
     const nodes: Node[] = completedPapers.map(p => ({
       id: p.id,
       paper: p,
-      radius: 20, // Base radius
-      color: '#3b82f6', // Blue-500
+      radius: 20,
+      degree: 0,
+      isCore: false,
     }));
 
-    // Create links based on reference matching
-    // Simple fuzzy matching: check if reference title is contained in another paper's title (or vice versa)
-    // Or check similarity. For MVP, simple inclusion.
     const links: Link[] = [];
     
     nodes.forEach(sourceNode => {
       const references = sourceNode.paper.analysis?.references || [];
       
       references.forEach(refTitle => {
-        // Normalize reference title
         const normRef = refTitle.toLowerCase().replace(/[^\w\s]/g, '');
         
         nodes.forEach(targetNode => {
@@ -80,23 +77,20 @@ export function KnowledgeGraph({ papers, onNodeClick }: KnowledgeGraphProps) {
           
           const targetTitle = (targetNode.paper.analysis?.title || targetNode.paper.fileName).toLowerCase().replace(/[^\w\s]/g, '');
           
-          // Check for match
-          // If the reference title is very short, skip to avoid false positives
           if (normRef.length < 10) return;
 
-          // Check if target title contains the reference title or vice versa
-          // Using a threshold for similarity would be better but simple inclusion is a start
           if (targetTitle.includes(normRef) || normRef.includes(targetTitle)) {
              links.push({
                source: sourceNode.id,
                target: targetNode.id,
+               weight: Math.floor(Math.random() * 3) + 1, // Mock weight for edge thickness
              });
           }
         });
       });
     });
 
-    // Calculate node size based on degree (number of connections)
+    // Calculate degree
     const degreeMap = new Map<string, number>();
     links.forEach(link => {
       const sourceId = typeof link.source === 'object' ? (link.source as Node).id : link.source;
@@ -106,24 +100,30 @@ export function KnowledgeGraph({ papers, onNodeClick }: KnowledgeGraphProps) {
       degreeMap.set(String(targetId), (degreeMap.get(String(targetId)) || 0) + 1);
     });
 
+    // Find max degree to determine core nodes
+    let maxDegree = 0;
+    degreeMap.forEach(degree => {
+      if (degree > maxDegree) maxDegree = degree;
+    });
+
     nodes.forEach(node => {
       const degree = degreeMap.get(node.id) || 0;
-      node.radius = 20 + (degree * 2); // Increase size with connections
-      // Color based on role: High degree -> Core (Orange), Low -> Follow-up (Blue)
-      node.color = degree > 2 ? '#f97316' : '#3b82f6'; 
+      node.degree = degree;
+      // Base radius + scale by degree, ensure minimum size
+      node.radius = Math.max(25, 20 + (degree * 3)); 
+      node.isCore = degree > 0 && degree >= maxDegree * 0.6; // Top 40% connected are core
     });
 
     // 2. Setup Simulation
     const simulation = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(links).id((d: any) => d.id).distance(150))
-      .force('charge', d3.forceManyBody().strength(-300))
+      .force('link', d3.forceLink(links).id((d: any) => d.id).distance(200))
+      .force('charge', d3.forceManyBody().strength(-800)) // Stronger repulsion for spread
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collide', d3.forceCollide().radius((d: any) => d.radius + 10));
+      .force('collide', d3.forceCollide().radius((d: any) => d.radius + 30));
 
     // 3. Draw Elements
     const g = svg.append('g');
 
-    // Zoom behavior
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 4])
       .on('zoom', (event) => {
@@ -132,29 +132,29 @@ export function KnowledgeGraph({ papers, onNodeClick }: KnowledgeGraphProps) {
     
     svg.call(zoom);
 
-    // Links
-    const link = g.append('g')
-      .attr('stroke', '#999')
-      .attr('stroke-opacity', 0.6)
-      .selectAll('line')
-      .data(links)
-      .join('line')
-      .attr('stroke-width', 1.5)
-      .attr('marker-end', 'url(#arrowhead)');
-
-    // Arrowhead marker
+    // Arrowhead marker definition
     svg.append('defs').append('marker')
       .attr('id', 'arrowhead')
       .attr('viewBox', '0 -5 10 10')
-      .attr('refX', 25) // Adjust based on node radius, but radius is variable... 
-                        // Actually we should adjust refX dynamically or make it large enough
+      .attr('refX', 0) // Will be adjusted dynamically in tick
       .attr('refY', 0)
       .attr('markerWidth', 6)
       .attr('markerHeight', 6)
       .attr('orient', 'auto')
       .append('path')
       .attr('d', 'M0,-5L10,0L0,5')
-      .attr('fill', '#999');
+      .attr('fill', '#8ab6f4'); // Light blue arrow
+
+    // Links (using path for curves)
+    const link = g.append('g')
+      .selectAll('path')
+      .data(links)
+      .join('path')
+      .attr('stroke', '#8ab6f4') // Light blue edges
+      .attr('stroke-opacity', 0.8)
+      .attr('fill', 'none')
+      .attr('stroke-width', d => 1.5 + (d.weight * 1.5)) // Variable thickness
+      .attr('marker-end', 'url(#arrowhead)');
 
     // Nodes
     const node = g.append('g')
@@ -174,37 +174,92 @@ export function KnowledgeGraph({ papers, onNodeClick }: KnowledgeGraphProps) {
     // Node Circles
     node.append('circle')
       .attr('r', d => d.radius)
-      .attr('fill', d => d.color)
-      .attr('stroke', '#fff')
-      .attr('stroke-width', 2)
-      .attr('class', 'cursor-pointer transition-all duration-200 hover:stroke-gray-900 shadow-lg');
+      .attr('fill', '#b5deb5') // Light green fill
+      .attr('stroke', d => d.isCore ? '#1e8449' : '#88c588') // Darker green for core
+      .attr('stroke-width', d => d.isCore ? 4 : 2)
+      .attr('class', 'cursor-pointer transition-all duration-200 hover:brightness-95');
 
-    // Node Labels (Title)
+    // Number inside node
+    node.append('text')
+      .text(d => d.degree > 0 ? d.degree : 1) // Show degree or 1 if isolated
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'central')
+      .attr('font-size', d => Math.max(14, d.radius * 0.8) + 'px')
+      .attr('font-family', 'serif') // Match the serif look in the image
+      .attr('fill', '#111827')
+      .attr('pointer-events', 'none');
+
+    // Authors label outside node
     node.append('text')
       .text(d => {
+        const authors = d.paper.analysis?.authors;
+        if (authors && authors.length > 0) {
+          // Take up to 3 authors, extract last names if possible, or just use the string
+          const shortAuthors = authors.slice(0, 3).map(a => {
+             const parts = a.split(' ');
+             return parts[parts.length - 1].toUpperCase();
+          });
+          return shortAuthors.join(', ');
+        }
+        // Fallback to truncated title if no authors
         const title = d.paper.analysis?.title || d.paper.fileName;
-        return title.length > 20 ? title.substring(0, 20) + '...' : title;
+        return title.length > 15 ? title.substring(0, 15) + '...' : title;
       })
       .attr('x', 0)
-      .attr('y', d => d.radius + 15)
+      .attr('y', d => -d.radius - 8) // Position above the node
       .attr('text-anchor', 'middle')
-      .attr('font-size', '10px')
-      .attr('fill', '#374151')
+      .attr('font-size', '11px')
+      .attr('font-family', 'sans-serif')
+      .attr('fill', '#1f2937')
       .attr('pointer-events', 'none')
       .clone(true).lower()
       .attr('stroke', 'white')
-      .attr('stroke-width', 3);
+      .attr('stroke-width', 3)
+      .attr('stroke-opacity', 0.8);
 
     // Simulation Tick
     simulation.on('tick', () => {
-      link
-        .attr('x1', d => (d.source as Node).x!)
-        .attr('y1', d => (d.source as Node).y!)
-        .attr('x2', d => (d.target as Node).x!)
-        .attr('y2', d => (d.target as Node).y!);
+      link.attr('d', (d: any) => {
+        const source = d.source as Node;
+        const target = d.target as Node;
+        
+        // Calculate curve
+        const dx = target.x! - source.x!;
+        const dy = target.y! - source.y!;
+        const dr = Math.sqrt(dx * dx + dy * dy) * 1.5; // Curve radius
+        
+        // Calculate intersection point with target node radius to position arrowhead correctly
+        // We need to pull the end of the line back by the target node's radius
+        const angle = Math.atan2(dy, dx);
+        const targetRadius = target.radius + 6; // +6 for marker size roughly
+        
+        // If distance is very small, just draw a straight line or nothing
+        if (Math.sqrt(dx*dx + dy*dy) < targetRadius) return "";
 
-      node
-        .attr('transform', d => `translate(${d.x},${d.y})`);
+        // We don't adjust the end point of the curve easily with SVG arcs, 
+        // so we adjust the marker-end refX dynamically instead, or use a straight line if we want precise arrow placement.
+        // For curved paths (arcs), adjusting the end point is complex.
+        // Let's use a simpler quadratic bezier curve where we can control the end point.
+        
+        // Midpoint
+        const mx = (source.x! + target.x!) / 2;
+        const my = (source.y! + target.y!) / 2;
+        
+        // Offset for curve
+        const offset = 30;
+        const cx = mx - (dy * offset) / Math.sqrt(dx*dx + dy*dy);
+        const cy = my + (dx * offset) / Math.sqrt(dx*dx + dy*dy);
+
+        // Calculate exact end point on the edge of the target circle
+        // This is an approximation for bezier curves, but works well enough
+        const endAngle = Math.atan2(target.y! - cy, target.x! - cx);
+        const ex = target.x! - Math.cos(endAngle) * targetRadius;
+        const ey = target.y! - Math.sin(endAngle) * targetRadius;
+
+        return `M ${source.x} ${source.y} Q ${cx} ${cy} ${ex} ${ey}`;
+      });
+
+      node.attr('transform', d => `translate(${d.x},${d.y})`);
     });
 
     function dragstarted(event: any, d: Node) {
@@ -237,20 +292,25 @@ export function KnowledgeGraph({ papers, onNodeClick }: KnowledgeGraphProps) {
 
   return (
     <div ref={containerRef} className="w-full h-[600px] bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden relative">
-      <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur p-2 rounded-lg shadow-sm border border-gray-100 text-xs text-gray-600 space-y-1">
+      <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur p-3 rounded-lg shadow-sm border border-gray-100 text-xs text-gray-600 space-y-2">
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-          <span>Core Paper (Many Citations)</span>
+          <div className="w-4 h-4 rounded-full bg-[#b5deb5] border-2 border-[#1e8449]"></div>
+          <span className="font-medium text-gray-700">Core Node (High Citations)</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-          <span>Regular Paper</span>
+          <div className="w-4 h-4 rounded-full bg-[#b5deb5] border-2 border-[#88c588]"></div>
+          <span className="font-medium text-gray-700">Regular Node</span>
         </div>
-        <div className="mt-2 pt-2 border-t border-gray-100 text-gray-400 italic">
-          * Links are inferred from references
+        <div className="flex items-center gap-2 mt-1">
+          <div className="w-6 h-1 bg-[#8ab6f4] rounded"></div>
+          <span className="font-medium text-gray-700">Citation Link</span>
+        </div>
+        <div className="mt-2 pt-2 border-t border-gray-100 text-gray-400 italic text-[10px]">
+          * Numbers indicate connection degree
         </div>
       </div>
       <svg ref={svgRef} width="100%" height="100%" className="cursor-grab active:cursor-grabbing"></svg>
     </div>
   );
 }
+

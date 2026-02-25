@@ -8,7 +8,7 @@ import { CitationModal } from '@/components/CitationModal';
 import { Paper, ProcessingStatus, PaperAnalysis, BatchProgress } from '@/types';
 import { extractTextFromPDF } from '@/lib/pdf-parser';
 import { analyzePaper, setCustomApiKey } from '@/lib/gemini';
-import { BookOpen, Github, Trash2, Download, Table as TableIcon, Network, Search, Minimize2, Maximize2, Loader2, CheckCircle2, AlertCircle, Key, Share2 } from 'lucide-react';
+import { BookOpen, Github, Trash2, Download, Table as TableIcon, Network, Search, Minimize2, Maximize2, Loader2, CheckCircle2, AlertCircle, Key, Share2, Layers, Folder, Tag } from 'lucide-react';
 import { saveAs } from 'file-saver';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
@@ -22,6 +22,7 @@ function App() {
   const [citationModal, setCitationModal] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isCompactMode, setIsCompactMode] = useState(false);
+  const [isGrouped, setIsGrouped] = useState(false);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [tempApiKey, setTempApiKey] = useState('');
@@ -623,18 +624,32 @@ function App() {
                 
                 <div className="flex items-center gap-4">
                   {viewMode === 'table' && (
-                    <button
-                      onClick={() => setIsCompactMode(!isCompactMode)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                        isCompactMode 
-                          ? 'bg-blue-50 text-blue-700 border border-blue-200' 
-                          : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-                      }`}
-                      title={isCompactMode ? "显示全文" : "紧凑视图"}
-                    >
-                      {isCompactMode ? <Maximize2 className="w-4 h-4" /> : <Minimize2 className="w-4 h-4" />}
-                      {isCompactMode ? '展开' : '紧凑'}
-                    </button>
+                    <>
+                      <button
+                        onClick={() => setIsGrouped(!isGrouped)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                          isGrouped 
+                            ? 'bg-blue-50 text-blue-700 border border-blue-200' 
+                            : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                        }`}
+                        title={isGrouped ? "取消分类" : "按标签分类"}
+                      >
+                        <Layers className="w-4 h-4" />
+                        分类视图
+                      </button>
+                      <button
+                        onClick={() => setIsCompactMode(!isCompactMode)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                          isCompactMode 
+                            ? 'bg-blue-50 text-blue-700 border border-blue-200' 
+                            : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                        }`}
+                        title={isCompactMode ? "显示全文" : "紧凑视图"}
+                      >
+                        {isCompactMode ? <Maximize2 className="w-4 h-4" /> : <Minimize2 className="w-4 h-4" />}
+                        {isCompactMode ? '展开' : '紧凑'}
+                      </button>
+                    </>
                   )}
 
                   <div className="flex bg-gray-100 p-1 rounded-lg">
@@ -665,21 +680,97 @@ function App() {
               </div>
               
               {viewMode === 'table' ? (
-                <DataTable 
-                  data={filteredPapers} 
-                  onRowClick={setSelectedPaper} 
-                  onPaperUpdate={handlePaperUpdate}
-                  onViewSource={handleViewSource}
-                  isCompact={isCompactMode}
-                  onTagAdd={handlePaperTagAdd}
-                  onTagRemove={handlePaperTagRemove}
-                  onViewCitation={handleViewCitation}
-                  highlightedId={highlightedPaperId}
-                  onLinkClick={handleLinkClick}
-                  onDeletePapers={handleDeletePapers}
-                  onBatchTagAdd={handleBatchTagAdd}
-                  onBatchTagClear={handleBatchTagClear}
-                />
+                isGrouped ? (
+                  <div className="space-y-8">
+                    {(() => {
+                      const grouped: Record<string, Paper[]> = {};
+                      const uncategorized: Paper[] = [];
+
+                      filteredPapers.forEach(paper => {
+                        if (!paper.tags || paper.tags.length === 0) {
+                          uncategorized.push(paper);
+                        } else {
+                          paper.tags.forEach(tag => {
+                            if (!grouped[tag]) grouped[tag] = [];
+                            grouped[tag].push(paper);
+                          });
+                        }
+                      });
+
+                      const sortedTags = Object.keys(grouped).sort();
+
+                      return (
+                        <>
+                          {sortedTags.map(tag => (
+                            <div key={tag} className="space-y-3">
+                              <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                                <Tag className="w-5 h-5 text-blue-500" />
+                                {tag}
+                                <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{grouped[tag].length}</span>
+                              </h3>
+                              <DataTable 
+                                data={grouped[tag]} 
+                                onRowClick={setSelectedPaper} 
+                                onPaperUpdate={handlePaperUpdate}
+                                onViewSource={handleViewSource}
+                                isCompact={isCompactMode}
+                                onTagAdd={handlePaperTagAdd}
+                                onTagRemove={handlePaperTagRemove}
+                                onViewCitation={handleViewCitation}
+                                highlightedId={highlightedPaperId}
+                                onLinkClick={handleLinkClick}
+                                onDeletePapers={handleDeletePapers}
+                                onBatchTagAdd={handleBatchTagAdd}
+                                onBatchTagClear={handleBatchTagClear}
+                              />
+                            </div>
+                          ))}
+                          
+                          {uncategorized.length > 0 && (
+                            <div className="space-y-3">
+                              <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                                <Folder className="w-5 h-5 text-gray-400" />
+                                未分类
+                                <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{uncategorized.length}</span>
+                              </h3>
+                              <DataTable 
+                                data={uncategorized} 
+                                onRowClick={setSelectedPaper} 
+                                onPaperUpdate={handlePaperUpdate}
+                                onViewSource={handleViewSource}
+                                isCompact={isCompactMode}
+                                onTagAdd={handlePaperTagAdd}
+                                onTagRemove={handlePaperTagRemove}
+                                onViewCitation={handleViewCitation}
+                                highlightedId={highlightedPaperId}
+                                onLinkClick={handleLinkClick}
+                                onDeletePapers={handleDeletePapers}
+                                onBatchTagAdd={handleBatchTagAdd}
+                                onBatchTagClear={handleBatchTagClear}
+                              />
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <DataTable 
+                    data={filteredPapers} 
+                    onRowClick={setSelectedPaper} 
+                    onPaperUpdate={handlePaperUpdate}
+                    onViewSource={handleViewSource}
+                    isCompact={isCompactMode}
+                    onTagAdd={handlePaperTagAdd}
+                    onTagRemove={handlePaperTagRemove}
+                    onViewCitation={handleViewCitation}
+                    highlightedId={highlightedPaperId}
+                    onLinkClick={handleLinkClick}
+                    onDeletePapers={handleDeletePapers}
+                    onBatchTagAdd={handleBatchTagAdd}
+                    onBatchTagClear={handleBatchTagClear}
+                  />
+                )
               ) : (
                 <KnowledgeGraph 
                   papers={filteredPapers} 
