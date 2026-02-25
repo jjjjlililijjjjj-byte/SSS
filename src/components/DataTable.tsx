@@ -4,11 +4,13 @@ import {
   getCoreRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
+  getSortedRowModel,
   flexRender,
   ColumnDef,
+  SortingState,
 } from '@tanstack/react-table';
 import { Paper, ProcessingStatus, PaperAnalysis } from '@/types';
-import { Loader2, CheckCircle2, AlertCircle, MessageSquare, Pencil, Eye, Plus, X, Quote, Trash2 } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertCircle, MessageSquare, Pencil, Eye, Plus, X, Quote, Trash2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface DataTableProps {
@@ -313,6 +315,7 @@ export function DataTable({
   onBatchTagClear
 }: DataTableProps) {
   const [rowSelection, setRowSelection] = useState({});
+  const [sorting, setSorting] = useState<SortingState>([]);
   const [batchTag, setBatchTag] = useState("");
   const [isBatchTagging, setIsBatchTagging] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -371,8 +374,16 @@ export function DataTable({
       ),
     },
     {
-      accessorKey: 'title',
-      header: '标题',
+      accessorKey: 'analysis.title',
+      header: ({ column }) => (
+        <button
+          className="flex items-center gap-1 hover:text-blue-600 transition-colors"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        >
+          标题
+          {{ asc: <ArrowUp className="ml-2 h-3 w-3" />, desc: <ArrowDown className="ml-2 h-3 w-3" /> }[column.getIsSorted() as string] ?? <ArrowUpDown className="ml-2 h-3 w-3 text-gray-400" />}
+        </button>
+      ),
       size: 200,
       cell: ({ row }) => (
         <div className="flex flex-col gap-1">
@@ -394,6 +405,43 @@ export function DataTable({
             onAddTag={(tag) => onTagAdd(row.original.id, tag)}
             onRemoveTag={(tag) => onTagRemove(row.original.id, tag)}
           />
+        </div>
+      ),
+    },
+    {
+      accessorFn: row => row.analysis?.authors?.[0] || '', // Sort by first author
+      id: 'authors',
+      header: ({ column }) => (
+        <button
+          className="flex items-center gap-1 hover:text-blue-600 transition-colors"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        >
+          作者
+          {{ asc: <ArrowUp className="ml-2 h-3 w-3" />, desc: <ArrowDown className="ml-2 h-3 w-3" /> }[column.getIsSorted() as string] ?? <ArrowUpDown className="ml-2 h-3 w-3 text-gray-400" />}
+        </button>
+      ),
+      size: 150,
+      cell: ({ row }) => (
+        <div className="text-sm text-gray-600 whitespace-pre-wrap">
+          {row.original.analysis?.authors?.join(', ') || '-'}
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'analysis.year',
+      header: ({ column }) => (
+        <button
+          className="flex items-center gap-1 hover:text-blue-600 transition-colors"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        >
+          年份
+          {{ asc: <ArrowUp className="ml-2 h-3 w-3" />, desc: <ArrowDown className="ml-2 h-3 w-3" /> }[column.getIsSorted() as string] ?? <ArrowUpDown className="ml-2 h-3 w-3 text-gray-400" />}
+        </button>
+      ),
+      size: 100,
+      cell: ({ row }) => (
+        <div className="text-sm text-gray-600">
+          {row.original.analysis?.year || '-'}
         </div>
       ),
     },
@@ -506,6 +554,25 @@ export function DataTable({
       ),
     },
     {
+      accessorFn: row => row.analysis?.references?.length || 0,
+      id: 'referenceCount',
+      header: ({ column }) => (
+        <button
+          className="flex items-center gap-1 hover:text-blue-600 transition-colors"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        >
+          参考文献数量
+          {{ asc: <ArrowUp className="ml-2 h-3 w-3" />, desc: <ArrowDown className="ml-2 h-3 w-3" /> }[column.getIsSorted() as string] ?? <ArrowUpDown className="ml-2 h-3 w-3 text-gray-400" />}
+        </button>
+      ),
+      size: 150,
+      cell: ({ row }) => (
+        <div className="text-sm text-gray-600">
+          {row.original.analysis?.references?.length || 0}
+        </div>
+      ),
+    },
+    {
       accessorKey: 'citation',
       header: '参考文献',
       size: 250,
@@ -572,9 +639,12 @@ export function DataTable({
     columns,
     state: {
       rowSelection,
+      sorting,
     },
     onRowSelectionChange: setRowSelection,
     getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    onSortingChange: setSorting,
     enableRowSelection: true,
   });
 
@@ -671,7 +741,7 @@ export function DataTable({
         ref={scrollContainerRef}
         className="overflow-x-auto"
       >
-        <table className="w-full text-left border-collapse table-fixed min-w-[1800px]">
+        <table className="w-full text-left border-collapse table-fixed min-w-[2100px]">
           <thead className="bg-gray-50 border-b border-gray-100">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
