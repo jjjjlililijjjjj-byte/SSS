@@ -14,6 +14,7 @@ import { saveAs } from 'file-saver';
 function App() {
   const [papers, setPapers] = useState<Paper[]>([]);
   const [selectedPaper, setSelectedPaper] = useState<Paper | null>(null);
+  const [highlightedPaperId, setHighlightedPaperId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'graph'>('table');
   const [sourceModal, setSourceModal] = useState<{ paper: Paper, title: string, highlightContent?: string, fileUrl?: string } | null>(null);
   const [citationModal, setCitationModal] = useState<string | null>(null);
@@ -203,6 +204,22 @@ function App() {
     setCitationModal(citation);
   };
 
+  const handleLinkClick = (paper: Paper) => {
+    setViewMode('table'); // Ensure we are in table view
+    setHighlightedPaperId(paper.id);
+    
+    // Use a small timeout to ensure viewMode change has rendered if needed
+    setTimeout(() => {
+      const element = document.getElementById(`paper-row-${paper.id}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+
+    // Clear highlight after a while
+    setTimeout(() => setHighlightedPaperId(null), 3000);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col">
       {/* Navbar */}
@@ -364,6 +381,8 @@ function App() {
                   onTagAdd={handlePaperTagAdd}
                   onTagRemove={handlePaperTagRemove}
                   onViewCitation={handleViewCitation}
+                  highlightedId={highlightedPaperId}
+                  onLinkClick={handleLinkClick}
                 />
               ) : (
                 <KnowledgeGraph 

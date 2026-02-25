@@ -18,6 +18,8 @@ interface DataTableProps {
   onTagAdd: (paperId: string, tag: string) => void;
   onTagRemove: (paperId: string, tag: string) => void;
   onViewCitation: (citation: string) => void;
+  highlightedId?: string | null;
+  onLinkClick?: (paper: Paper) => void;
 }
 
 const StatusIcon = ({ status }: { status: ProcessingStatus }) => {
@@ -279,7 +281,18 @@ const EditableCell = ({
   );
 };
 
-export function DataTable({ data, onRowClick, onPaperUpdate, onViewSource, isCompact = false, onTagAdd, onTagRemove, onViewCitation }: DataTableProps) {
+export function DataTable({ 
+  data, 
+  onRowClick, 
+  onPaperUpdate, 
+  onViewSource, 
+  isCompact = false, 
+  onTagAdd, 
+  onTagRemove, 
+  onViewCitation,
+  highlightedId,
+  onLinkClick: onPaperLinkClick
+}: DataTableProps) {
   const columns: ColumnDef<Paper>[] = [
     {
       accessorKey: 'status',
@@ -331,7 +344,7 @@ export function DataTable({ data, onRowClick, onPaperUpdate, onViewSource, isCom
           isEditable={row.original.status === 'completed'}
           onViewSource={() => onViewSource(row.original, 'Summary', row.original.analysis?.summary)}
           allPapers={data}
-          onLinkClick={onRowClick}
+          onLinkClick={onPaperLinkClick || onRowClick}
           isCompact={isCompact}
         />
       ),
@@ -349,7 +362,7 @@ export function DataTable({ data, onRowClick, onPaperUpdate, onViewSource, isCom
           isEditable={row.original.status === 'completed'}
           onViewSource={() => onViewSource(row.original, 'Goal', row.original.analysis?.goal)}
           allPapers={data}
-          onLinkClick={onRowClick}
+          onLinkClick={onPaperLinkClick || onRowClick}
           isCompact={isCompact}
         />
       ),
@@ -367,7 +380,7 @@ export function DataTable({ data, onRowClick, onPaperUpdate, onViewSource, isCom
           isEditable={row.original.status === 'completed'}
           onViewSource={() => onViewSource(row.original, 'Content', row.original.analysis?.content)}
           allPapers={data}
-          onLinkClick={onRowClick}
+          onLinkClick={onPaperLinkClick || onRowClick}
           isCompact={isCompact}
         />
       ),
@@ -385,7 +398,7 @@ export function DataTable({ data, onRowClick, onPaperUpdate, onViewSource, isCom
           isEditable={row.original.status === 'completed'}
           onViewSource={() => onViewSource(row.original, 'Method', row.original.analysis?.method)}
           allPapers={data}
-          onLinkClick={onRowClick}
+          onLinkClick={onPaperLinkClick || onRowClick}
           isCompact={isCompact}
         />
       ),
@@ -403,7 +416,7 @@ export function DataTable({ data, onRowClick, onPaperUpdate, onViewSource, isCom
           isEditable={row.original.status === 'completed'}
           onViewSource={() => onViewSource(row.original, 'Outlook', row.original.analysis?.outlook)}
           allPapers={data}
-          onLinkClick={onRowClick}
+          onLinkClick={onPaperLinkClick || onRowClick}
           isCompact={isCompact}
         />
       ),
@@ -421,7 +434,7 @@ export function DataTable({ data, onRowClick, onPaperUpdate, onViewSource, isCom
           isEditable={row.original.status === 'completed'}
           onViewSource={() => onViewSource(row.original, 'Value', row.original.analysis?.reference_value)}
           allPapers={data}
-          onLinkClick={onRowClick}
+          onLinkClick={onPaperLinkClick || onRowClick}
           isCompact={isCompact}
         />
       ),
@@ -497,7 +510,11 @@ export function DataTable({ data, onRowClick, onPaperUpdate, onViewSource, isCom
               table.getRowModel().rows.map((row) => (
                 <tr
                   key={row.id}
-                  className="hover:bg-gray-50/50 transition-colors group"
+                  id={`paper-row-${row.original.id}`}
+                  className={cn(
+                    "hover:bg-gray-50/50 transition-all group",
+                    highlightedId === row.original.id ? "bg-blue-50 ring-2 ring-blue-400 ring-inset z-10" : ""
+                  )}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td
