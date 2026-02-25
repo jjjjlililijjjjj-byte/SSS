@@ -3,10 +3,21 @@ import { PaperAnalysis, ChatMessage } from "@/types";
 
 // Initialize Gemini API lazily to prevent app crash on startup if key is missing
 let ai: GoogleGenAI | null = null;
+let customApiKey: string | null = null;
+
+export function setCustomApiKey(key: string) {
+  customApiKey = key;
+  ai = new GoogleGenAI({ apiKey: key });
+}
 
 function getAI() {
+  if (customApiKey) {
+    if (!ai) ai = new GoogleGenAI({ apiKey: customApiKey });
+    return ai;
+  }
+  
   if (!ai) {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
     if (!apiKey) {
       console.warn("Gemini API Key is missing. AI features will not work.");
       return null;

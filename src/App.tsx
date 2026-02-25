@@ -7,10 +7,11 @@ import { SidePanel } from '@/components/SidePanel';
 import { CitationModal } from '@/components/CitationModal';
 import { Paper, ProcessingStatus, PaperAnalysis, BatchProgress } from '@/types';
 import { extractTextFromPDF } from '@/lib/pdf-parser';
-import { analyzePaper } from '@/lib/gemini';
-import { BookOpen, Github, Trash2, Download, Table as TableIcon, Network, Search, Minimize2, Maximize2, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { analyzePaper, setCustomApiKey } from '@/lib/gemini';
+import { BookOpen, Github, Trash2, Download, Table as TableIcon, Network, Search, Minimize2, Maximize2, Loader2, CheckCircle2, AlertCircle, Key, Share2 } from 'lucide-react';
 import { saveAs } from 'file-saver';
 import { motion, AnimatePresence } from 'motion/react';
+import { cn } from '@/lib/utils';
 
 function App() {
   const [papers, setPapers] = useState<Paper[]>([]);
@@ -22,7 +23,10 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isCompactMode, setIsCompactMode] = useState(false);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
-  const [apiKeyMissing, setApiKeyMissing] = useState(false);
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+  const [tempApiKey, setTempApiKey] = useState('');
+  const [hasApiKey, setHasApiKey] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
   const [batchProgress, setBatchProgress] = useState<BatchProgress>({
     total: 0,
     completed: 0,
@@ -32,6 +36,35 @@ function App() {
 
   // Load from local storage on mount
   useEffect(() => {
+    const checkApiKey = async () => {
+      // @ts-ignore
+      if (window.aistudio && await window.aistudio.hasSelectedApiKey()) {
+        setHasApiKey(true);
+      } else if (process.env.GEMINI_API_KEY || process.env.API_KEY) {
+        setHasApiKey(true);
+      }
+    };
+    checkApiKey();
+
+    const params = new URLSearchParams(window.location.search);
+    const shareId = params.get('share');
+    if (shareId) {
+      const loadShare = async () => {
+        try {
+          const response = await fetch(`/api/share/${shareId}`);
+          if (response.ok) {
+            const data = await response.json();
+            setPapers(data);
+            window.history.replaceState({}, '', window.location.pathname);
+            alert('已成功加载分享的文献库');
+          }
+        } catch (error) {
+          console.error('Load share failed:', error);
+        }
+      };
+      loadShare();
+    }
+
     const savedPapers = localStorage.getItem('scholartab-papers');
     if (savedPapers) {
       try {
@@ -51,12 +84,6 @@ function App() {
     const papersToSave = papers.map(({ fileUrl, ...rest }) => rest);
     localStorage.setItem('scholartab-papers', JSON.stringify(papersToSave));
   }, [papers]);
-
-  useEffect(() => {
-    if (!process.env.GEMINI_API_KEY) {
-      setApiKeyMissing(true);
-    }
-  }, []);
 
   const allTags = useMemo(() => {
     const tags = new Set<string>();
@@ -83,6 +110,12 @@ function App() {
   }, [papers, searchQuery, selectedTag]);
 
   const handleFilesDrop = useCallback(async (files: File[]) => {
+    if (!hasApiKey) {
+      setShowApiKeyInput(true);
+      alert('请先设置 API Key 以启动 AI 分析');
+      return;
+    }
+
     const newPapers: Paper[] = files.map(file => ({
       id: crypto.randomUUID(),
       fileName: file.name,
@@ -287,6 +320,46 @@ function App() {
     }));
   };
 
+  const handleSetApiKey = () => {
+    if (tempApiKey.trim()) {
+      setCustomApiKey(tempApiKey.trim());
+      setHasApiKey(true);
+      setShowApiKeyInput(false);
+      alert('API Key 已设置');
+    }
+  };
+
+  const handleOpenSelectKey = async () => {
+    // @ts-ignore
+    if (window.aistudio) {
+      // @ts-ignore
+      await window.aistudio.openSelectKey();
+      setHasApiKey(true);
+      setShowApiKeyInput(false);
+    }
+  };
+
+  const handleShare = async () => {
+    if (papers.length === 0) return;
+    setIsSharing(true);
+    try {
+      const response = await fetch('/api/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(papers.map(({ fileUrl, ...rest }) => rest))
+      });
+      const { id } = await response.json();
+      const shareUrl = `${window.location.origin}?share=${id}`;
+      await navigator.clipboard.writeText(shareUrl);
+      alert('分享链接已复制到剪贴板！');
+    } catch (error) {
+      console.error('Share failed:', error);
+      alert('分享失败，请稍后重试');
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col">
       {/* Navbar */}
@@ -320,6 +393,15 @@ function App() {
             {papers.length > 0 && (
               <>
                 <button
+                  onClick={handleShare}
+                  disabled={isSharing}
+                  className="text-sm font-medium text-gray-500 hover:text-blue-600 transition-colors flex items-center gap-1 disabled:opacity-50"
+                >
+                  <Share2 className={cn("w-4 h-4", isSharing && "animate-spin")} />
+                  {isSharing ? '分享中...' : '分享'}
+                </button>
+                <div className="h-4 w-px bg-gray-200" />
+                <button
                   onClick={handleExport}
                   className="text-sm font-medium text-gray-500 hover:text-blue-600 transition-colors flex items-center gap-1"
                 >
@@ -344,6 +426,74 @@ function App() {
             >
               <Github className="w-5 h-5" />
             </a>
+
+            <div className="relative">
+              <button
+                onClick={() => setShowApiKeyInput(!showApiKeyInput)}
+                className={cn(
+                  "p-2 rounded-full transition-all",
+                  hasApiKey ? "text-green-500 hover:bg-green-50" : "text-gray-400 hover:bg-gray-100"
+                )}
+                title="设置 API Key"
+              >
+                <Key className="w-5 h-5" />
+              </button>
+
+              <AnimatePresence>
+                {showApiKeyInput && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-gray-200 p-4 z-50"
+                  >
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">API 设置</h3>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-1 block">
+                          手动输入 Gemini API Key
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="password"
+                            value={tempApiKey}
+                            onChange={(e) => setTempApiKey(e.target.value)}
+                            placeholder="粘贴您的 API Key..."
+                            className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none"
+                          />
+                          <button
+                            onClick={handleSetApiKey}
+                            className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors"
+                          >
+                            保存
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                          <span className="w-full border-t border-gray-100"></span>
+                        </div>
+                        <div className="relative flex justify-center text-[10px] uppercase">
+                          <span className="bg-white px-2 text-gray-400">或者</span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={handleOpenSelectKey}
+                        className="w-full py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-100 transition-colors flex items-center justify-center gap-2"
+                      >
+                        使用平台 Key 选择器
+                      </button>
+                      
+                      <p className="text-[10px] text-gray-400 leading-relaxed">
+                        设置 API Key 后即可启动 AI 论文分析。您的 Key 仅保存在当前会话中。
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </div>
       </header>
@@ -352,13 +502,13 @@ function App() {
         <main className={`flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 transition-all duration-300 ${sourceModal ? 'mr-[50%] hidden md:block' : ''}`}>
           <div className="max-w-7xl mx-auto">
             {/* API Key Warning */}
-            {apiKeyMissing && (
+            {!hasApiKey && (
               <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
                 <div>
-                  <h3 className="text-sm font-semibold text-amber-900">Gemini API Key 缺失</h3>
+                  <h3 className="text-sm font-semibold text-amber-900">Gemini API Key 未设置</h3>
                   <p className="text-xs text-amber-700 mt-1">
-                    请在环境变量中设置 <code>GEMINI_API_KEY</code> 以启用 AI 分析功能。
+                    请点击右上角的钥匙图标设置 API Key，以启用 AI 论文分析功能。
                   </p>
                 </div>
               </div>
